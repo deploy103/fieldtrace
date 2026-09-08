@@ -57,6 +57,7 @@ class ReportBundle:
     findings: tuple[Mapping[str, Any], ...] = ()
     diagnostics: tuple[Mapping[str, Any], ...] = ()
     artifacts: tuple[Mapping[str, Any], ...] = ()
+    correlations: tuple[Mapping[str, Any], ...] = ()
     selection: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -71,6 +72,7 @@ class ReportBundle:
         findings: Sequence[object] = (),
         diagnostics: Sequence[object] = (),
         artifacts: Sequence[object] = (),
+        correlations: Sequence[object] = (),
         selection: object | None = None,
     ) -> ReportBundle:
         plain_case = to_plain(case or {})
@@ -89,6 +91,7 @@ class ReportBundle:
             findings=_records(findings),
             diagnostics=_records(diagnostics),
             artifacts=_records(artifacts),
+            correlations=_records(correlations),
             selection=dict(plain_selection),
         )
 
@@ -120,6 +123,7 @@ class ReportBundle:
             findings=value.get("findings", ()),
             diagnostics=value.get("diagnostics", ()),
             artifacts=value.get("artifacts", ()),
+            correlations=value.get("correlations", ()),
             selection=selection,
         )
 
@@ -135,6 +139,7 @@ class ReportBundle:
             "findings": to_plain(self.findings),
             "diagnostics": to_plain(self.diagnostics),
             "artifacts": to_plain(self.artifacts),
+            "correlations": to_plain(self.correlations),
         }
 
 

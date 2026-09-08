@@ -16,6 +16,7 @@ _PCAP_MAGICS = {
     b"\x4d\x3c\xb2\xa1",
 }
 _PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
+_EVTX_MAGIC = b"ElfFile\x00"
 _WEB_LINE = re.compile(
     rb"(?m)^(?:\d{1,3}\.){3}\d{1,3}\s+\S+\s+\S+\s+\[[^\]\r\n]+\]\s+\""
     rb"(?:GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH|CONNECT)\s+"
@@ -92,6 +93,8 @@ class FormatDetector:
 
     @staticmethod
     def _builtin_probe(sample: bytes) -> ProbeResult:
+        if sample.startswith(_EVTX_MAGIC):
+            return ProbeResult(SourceFormat.EVTX, 1.0, "Windows EVTX file magic 값 확인")
         if sample[:4] in _PCAP_MAGICS:
             return ProbeResult(SourceFormat.PCAP, 1.0, "PCAP magic 값 확인")
         if sample.startswith(_PCAPNG_MAGIC):

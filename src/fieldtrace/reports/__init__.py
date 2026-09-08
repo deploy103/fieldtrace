@@ -3,6 +3,7 @@
 from fieldtrace.reports.exporters import (
     ReportFormat,
     export_csv,
+    export_html,
     export_json,
     export_markdown,
     export_report,
@@ -15,6 +16,7 @@ __all__ = [
     "ReportDataProvider",
     "ReportFormat",
     "export_csv",
+    "export_html",
     "export_json",
     "export_markdown",
     "export_report",

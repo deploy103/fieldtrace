@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import Event, Thread
 from typing import Any
 
+from .artifacts import SafeArtifactSink
 from .cases import CasePaths, create_case, prepare_case
 from .config import RuntimeConfig, load_config
 from .db import CaseStore
@@ -36,12 +37,14 @@ from .models import (
 from .registry import AnalyzerChoice, AnalyzerRegistry
 from .runner import SafeExternalRunner
 from .search import (
+    CorrelationEntry,
     EvidenceDetail,
     SearchHit,
     TimelineEntry,
     evidence_detail,
     literal_search,
 )
+from .search import correlations as build_correlations
 from .search import (
     report_bundle as build_report_bundle,
 )
@@ -65,6 +68,7 @@ def builtin_registry() -> AnalyzerRegistry:
         ("fieldtrace.analyzers.web", "WebLogAnalyzer"),
         ("fieldtrace.analyzers.linux_auth", "LinuxAuthAnalyzer"),
         ("fieldtrace.analyzers.pcap", "PcapAnalyzer"),
+        ("fieldtrace.analyzers.evtx", "EvtxAnalyzer"),
     )
     import importlib
 
@@ -209,13 +213,22 @@ class FieldTraceService:
             source_id,
             profile,
             analyzers=[choice.analyzer.name for choice in usable],
-            tool_versions={"tshark": environment.tshark_version},
+            tool_versions={
+                "tshark": environment.tshark_version,
+                "python_evtx": environment.python_evtx_version,
+            },
             config={
                 "time_policy": {
                     "timezone": self.config.time_policy.timezone,
                     "assumed_year": self.config.time_policy.assumed_year,
                 },
                 "text_encoding": text_encoding,
+                "patterns": {
+                    "flag_prefixes": list(self.config.flag_prefixes),
+                    "decode_max_depth": self.config.decode_max_depth,
+                    "decode_max_output_chars": self.config.decode_max_output_chars,
+                    "decode_max_candidates": self.config.decode_max_candidates,
+                },
                 "budget": {
                     "max_seconds": self.config.analysis.budget(profile).max_seconds,
                     "max_records": self.config.analysis.budget(profile).max_records,
@@ -259,6 +272,11 @@ class FieldTraceService:
                 started_at=time.monotonic(),
                 selected_tasks=tasks,
                 text_encoding=text_encoding,
+                flag_prefixes=self.config.flag_prefixes,
+                decode_max_depth=self.config.decode_max_depth,
+                decode_max_output_chars=self.config.decode_max_output_chars,
+                decode_max_candidates=self.config.decode_max_candidates,
+                artifact_sink=SafeArtifactSink(case.derived / f"run-{run_id}"),
             )
             try:
                 outcome = self._consume(
@@ -272,6 +290,8 @@ class FieldTraceService:
                 records_read = max(records_read, outcome["records_read"])
                 failures += outcome["failures"]
                 if outcome["incomplete"]:
+                    failures += 1
+                if outcome["budget_limited"] and profile != "quick":
                     failures += 1
                 budget_limited = budget_limited or outcome["budget_limited"]
                 cancelled = cancelled or outcome["cancelled"]
@@ -425,7 +445,15 @@ class FieldTraceService:
                         cancelled = True
                     elif item.level.casefold() == "error":
                         failures += 1
-                    elif item.stage in {"decode", "parse", "pcap.parse", "read", "timestamp"}:
+                    elif item.stage in {
+                        "decode",
+                        "parse",
+                        "pcap.parse",
+                        "pcap.objects",
+                        "evtx.parse",
+                        "read",
+                        "timestamp",
+                    }:
                         incomplete = True
                 else:
                     raise TypeError(f"알 수 없는 AnalysisItem: {type(item).__name__}")
@@ -525,11 +553,7 @@ class FieldTraceService:
                     resolved = candidate.resolve()
                     if any(resolved.is_relative_to(root) for root in excluded_roots):
                         continue
-                    if (
-                        not resolved.is_file()
-                        or resolved.name == ".gitkeep"
-                        or resolved in seen
-                    ):
+                    if not resolved.is_file() or resolved.name == ".gitkeep" or resolved in seen:
                         continue
                 except OSError:
                     continue
@@ -557,6 +581,26 @@ class FieldTraceService:
     ) -> list[TimelineEntry]:
         with CaseStore(case, create=False) as store:
             return build_timeline(store, limit=limit, latest_only=latest_only)
+
+    def correlations(
+        self,
+        case: Path | str,
+        *,
+        value: str | None = None,
+        kind: str | None = None,
+        min_sources: int = 2,
+        limit: int = 100,
+        latest_only: bool = True,
+    ) -> list[CorrelationEntry]:
+        with CaseStore(case, create=False) as store:
+            return build_correlations(
+                store,
+                value=value,
+                kind=kind,
+                min_sources=min_sources,
+                limit=limit,
+                latest_only=latest_only,
+            )
 
     def evidence(self, case: Path | str, kind: str, entity_id: int) -> EvidenceDetail | None:
         with CaseStore(case, create=False) as store:
