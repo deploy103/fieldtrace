@@ -8,6 +8,8 @@
 - Phase 2 기능·테스트 커밋: `d2b87b1`
 - Phase 1 Draft PR: `#1` <https://github.com/deploy103/fieldtrace/pull/1>
   (`main` ← `feat/codex-foundation`, OPEN/DRAFT, 자동 병합하지 않음)
+- Phase 2 stacked Draft PR: `#2` <https://github.com/deploy103/fieldtrace/pull/2>
+  (`feat/codex-foundation` ← `feat/codex-phase2`, OPEN/DRAFT, 자동 병합하지 않음)
 - 현재 구현 범위: `요구사항.md` Phase 1과 Phase 2
 
 이 문서는 자기 자신을 포함하는 최종 커밋 해시를 주장하지 않는다. 아래 명령으로
