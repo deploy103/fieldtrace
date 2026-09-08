@@ -37,8 +37,8 @@
   frame 근거, `shell=False`, timeout·출력·취소 제한과 임시 도구 설정 폴더
 - 요약 → 후보 → 원문 근거 → 진단 UI, literal 검색, 시간순/시간 미상 보기,
   Markdown/JSON/CSV 보고서와 CSV 수식 방어
-- 합성 text/web/auth 자료와 1패킷 PCAP hex fixture, mock TShark와 실제 TShark
-  integration marker 분리 및 TShark 4.2.2 실제 실행 검증
+- 합성 text/web/auth 자료와 1패킷 DNS PCAP·HTTP PCAPNG hex fixture, mock TShark와
+  실제 TShark integration marker 분리 및 TShark 4.2.2 실제 실행 검증
 
 결과 메뉴의 별도 고비용 `상세 분석`은 Phase 1에 실제 항목이 없으므로 ‘준비 중’으로
 비활성화했다. HTML 보고서, EVTX 등 후속 기능도 성공 기능처럼 등록하지 않았다.
@@ -83,8 +83,8 @@ uv run pytest -q -m integration tests/test_tshark_integration.py
 
 - Python `3.12.3`, Typer `0.27.2`, Rich `14.3.4`
 - Ruff: 전체 통과
-- 시스템 TShark 없는 기본 PATH: `39 passed, 1 skipped in 15.74s`
-- 임시 로컬 TShark 4.2.2 PATH: `40 passed in 17.94s`
+- 시스템 TShark 없는 기본 PATH: `39 passed, 1 skipped in 13.90s`
+- 임시 로컬 TShark 4.2.2 PATH: `40 passed in 16.25s`
 - `compileall`, `git diff --check`: 통과
 - quick/full/custom로 `samples/` 3개를 각각 분석: 모두 exit 0, source/run 3개,
   event 12개, finding 5개, failure 0, complete
@@ -99,6 +99,8 @@ uv run pytest -q -m integration tests/test_tshark_integration.py
   `FLAG{offline_evidence_42}` 검색은 성공
 - 실제 TShark 4.2.2: doctor 버전/필수 필드 정상, 122-byte PCAP 분석 exit 0,
   packet 1개, DNS `challenge.example.test`, `frame:1`, 검색·타임라인 성공
+- 실제 HTTP PCAPNG: 272 bytes, packet 1개, `192.0.2.10:49152` →
+  `198.51.100.80:80`, GET, host, URI raw/decode, `frame:1` 정답 일치
 - 원본 bytes/size/mtime/SHA-256 보존, state 손상 복구, LIKE wildcard escape,
   hash generation 경쟁은 자동 테스트로 확인
 
@@ -109,9 +111,10 @@ uv run pytest -q -m integration tests/test_tshark_integration.py
 fixture integration과 CLI 분석을 완료했다. 이 임시 경로는 배포 설치가 아니므로 새
 세션이나 현장 장비에서는 README대로 TShark 시스템 패키지를 별도 준비해야 한다.
 
-추적한 fixture는 `file`에서 정상 classic PCAP(122 bytes)으로 확인했다. mock과 실제
-엔진 모두 `-n -r`, DNS `challenge.example.test`, `frame:1` 계약을 검증했다. 실제
-PCAPNG와 HTTP 패킷 fixture는 아직 별도 실제 엔진 정답 자료가 없다.
+추적한 fixture는 `file`에서 정상 classic PCAP(122 bytes)과 PCAPNG(272 bytes)로
+확인했다. mock과 실제 엔진 모두 `-n -r`, DNS `challenge.example.test`, HTTP
+`/FLAG%7Bpcapng_http%7D`, `frame:1` 계약을 검증했다. 다중 패킷 TCP 재조립과 객체
+추출은 Phase 2 범위다.
 
 Ubuntu 24.04/WSL2 계열 현재 환경 외에 Kali, Windows 네이티브, macOS와 1GB급 자료도
 검증하지 않았다. Windows 네이티브와 macOS는 초기 지원 범위가 아니다.
@@ -135,8 +138,8 @@ Ubuntu 24.04/WSL2 계열 현재 환경 외에 Kali, Windows 네이티브, macOS�
    수행한다. Phase 1 실제 엔진 기준 버전은 4.2.2다.
 2. Phase 1 회귀를 유지한 채 실제 메뉴 사용에서 발견되는 기반 결함부터 수정한다.
 3. Phase 2의 EVTX/Sysmon 분석과 합성 정답 fixture를 추가한다.
-4. 실제 PCAPNG·HTTP fixture를 보강하고 TShark 엔진을 이용한 TCP 스트림 보기와
-   제한된 객체 추출을 추가하되 불완전 복원을 표시하고 추출물을 실행하지 않는다.
+4. 재전송·순서 뒤바뀜·누락을 포함한 다중 패킷 fixture를 보강하고 TShark 엔진으로
+   TCP 스트림 보기와 제한된 객체 추출을 추가하되 불완전 복원을 표시한다.
 5. 제한된 Base64/Hex/URL 디코딩, 교차 자료 검색, escape된 오프라인 HTML 보고서를
    구현한다.
 6. Phase 3에서 1GB급 메모리/시간, 손상 파일, disk full, SQLite 잠금, Kali와 완전
