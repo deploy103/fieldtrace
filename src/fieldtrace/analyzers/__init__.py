@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from fieldtrace.analyzers.evtx import EvtxAnalyzer
 from fieldtrace.analyzers.generic_text import GenericTextAnalyzer
 from fieldtrace.analyzers.linux_auth import LinuxAuthAnalyzer
 from fieldtrace.analyzers.pcap import PcapAnalyzer
@@ -9,6 +10,7 @@ from fieldtrace.analyzers.web import WebLogAnalyzer
 from fieldtrace.core.models import Analyzer
 
 BUILTIN_ANALYZER_TYPES = (
+    EvtxAnalyzer,
     WebLogAnalyzer,
     LinuxAuthAnalyzer,
     PcapAnalyzer,
@@ -26,6 +28,7 @@ built_in_analyzers = builtin_analyzers
 
 __all__ = [
     "BUILTIN_ANALYZER_TYPES",
+    "EvtxAnalyzer",
     "GenericTextAnalyzer",
     "LinuxAuthAnalyzer",
     "PcapAnalyzer",

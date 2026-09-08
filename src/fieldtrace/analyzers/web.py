@@ -22,6 +22,8 @@ from fieldtrace.analyzers._common import (
     requested,
     text_encoding,
 )
+from fieldtrace.analyzers.decoding import DecodeTracker, decoded_items
+from fieldtrace.analyzers.network_rules import http_request_reasons
 from fieldtrace.core.models import (
     AnalysisContext,
     AnalysisItem,
@@ -110,6 +112,7 @@ class WebLogAnalyzer:
         by_path: Counter[str] = Counter()
         by_status: Counter[str] = Counter()
         methods: Counter[str] = Counter()
+        decode_tracker = DecodeTracker()
         want_web = requested(
             context,
             "network_summary",
@@ -186,6 +189,26 @@ class WebLogAnalyzer:
                             "user_agent": match.group("agent"),
                         },
                     )
+                reasons = http_request_reasons(method, uri_raw, uri_decoded)
+                if want_web and reasons:
+                    yield Finding(
+                        rule_id="web.http_request_candidate",
+                        title="검토가 필요한 HTTP 요청 후보",
+                        observation=f"{method} {uri_decoded}: {', '.join(reasons)}",
+                        interpretation=(
+                            "문자열 규칙에 일치한 요청이며 취약점 악용이나 "
+                            "침입을 확정하지 않습니다."
+                        ),
+                        confidence="medium",
+                        evidence=evidence,
+                        severity="low",
+                        fields={
+                            "method": method,
+                            "uri_raw": uri_raw,
+                            "uri_decoded": uri_decoded,
+                            "reasons": reasons,
+                        },
+                    )
                 if timestamp_utc is None:
                     yield Diagnostic(
                         level="warning",
@@ -197,7 +220,7 @@ class WebLogAnalyzer:
                 flag_text = item.text
                 if match is not None and request_match is not None:
                     flag_text = f"{flag_text}\n{uri_decoded}"
-                for value in extract_flags(flag_text):
+                for value in extract_flags(flag_text, context.flag_prefixes):
                     yield Finding(
                         rule_id="web.flag_candidate",
                         title="웹 로그의 플래그 형태 문자열 후보",
@@ -209,6 +232,13 @@ class WebLogAnalyzer:
                         evidence=evidence,
                         fields={"value": value},
                     )
+                yield from decoded_items(
+                    context,
+                    flag_text,
+                    evidence,
+                    rule_prefix="web",
+                    tracker=decode_tracker,
+                )
             if processed % PROGRESS_INTERVAL == 0:
                 yield progress("web", processed, f"요청 {parsed_count:,}개 해석")
 

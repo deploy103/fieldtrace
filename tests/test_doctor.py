@@ -11,6 +11,7 @@ class TSharkDoctorRunner:
         "frame.number",
         "frame.time_epoch",
         "frame.protocols",
+        "tcp.stream",
         "ip.src",
         "ip.dst",
         "ipv6.src",
@@ -22,6 +23,7 @@ class TSharkDoctorRunner:
         "dns.qry.name",
         "http.request.method",
         "http.host",
+        "http.file_data",
         "http.request.uri",
         "_ws.col.protocol",
     )
@@ -31,8 +33,7 @@ class TSharkDoctorRunner:
             return 0, "TShark (Wireshark) 4.2.2\n", ""
         if argv[1:] == ["-G", "fields"]:
             output = "".join(
-                f"F\tSynthetic\t{field}\tFT_STRING\tparent\t\t0x0\t\n"
-                for field in self.fields
+                f"F\tSynthetic\t{field}\tFT_STRING\tparent\t\t0x0\t\n" for field in self.fields
             )
             return 0, output, ""
         raise AssertionError(f"예상하지 않은 doctor 명령: {argv}")

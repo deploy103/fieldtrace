@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -22,11 +22,12 @@ from fieldtrace.core import (
     load_config,
     run_doctor,
 )
-from fieldtrace.core.models import AnalysisSummary, Progress, SourceFormat
+from fieldtrace.core.models import AnalysisSummary, Environment, Progress, SourceFormat
 from fieldtrace.core.state import LocalState, StateStore
 from fieldtrace.reports import export_report
 from fieldtrace.ui import (
     ANALYSIS_TASKS,
+    DETAIL_TASKS,
     DetectionView,
     ResultView,
     TaskOption,
@@ -55,6 +56,7 @@ _FORMAT_ALIASES = {
     "linux_auth": SourceFormat.LINUX_AUTH,
     "pcap": SourceFormat.PCAP,
     "pcapng": SourceFormat.PCAP,
+    "evtx": SourceFormat.EVTX,
 }
 _TASKS_BY_FORMAT = {
     SourceFormat.GENERIC_TEXT.value: {"network_summary", "literal_search"},
@@ -64,7 +66,19 @@ _TASKS_BY_FORMAT = {
         "executed_commands",
         "literal_search",
     },
-    SourceFormat.PCAP.value: {"network_summary", "http_requests", "literal_search"},
+    SourceFormat.PCAP.value: {
+        "network_summary",
+        "http_requests",
+        "literal_search",
+        "tcp_streams",
+        "object_extraction",
+    },
+    SourceFormat.EVTX.value: {
+        "network_summary",
+        "login_activity",
+        "executed_commands",
+        "literal_search",
+    },
 }
 
 
@@ -139,6 +153,8 @@ class InteractiveController:
     state: LocalState
     terminal: Console
     current_case: Path | None = None
+    current_paths: tuple[Path, ...] = ()
+    _cached_environment: Environment | None = field(default=None, init=False, repr=False)
 
     def list(self, directory: Path) -> Sequence[Path]:
         try:
@@ -167,19 +183,26 @@ class InteractiveController:
                     format=result.format.value,
                     reason=result.reason,
                     confidence=result.confidence,
-                    available=(
-                        result.format is not SourceFormat.PCAP
-                        or bool(self._environment().tshark_path)
-                    ),
+                    available=self._format_available(result.format),
                     manual_selection_recommended=result.manual_selection_recommended,
                     encoding_required="인코딩 선택 필요" in result.reason,
                 )
         return detected
 
-    def _environment(self):  # type: ignore[no-untyped-def]
+    def _format_available(self, source_format: SourceFormat) -> bool:
+        environment = self._environment()
+        if source_format is SourceFormat.PCAP:
+            return bool(environment.tshark_path)
+        if source_format is SourceFormat.EVTX:
+            return bool(environment.python_evtx_version)
+        return True
+
+    def _environment(self) -> Environment:
         from fieldtrace.core import detect_environment
 
-        return detect_environment(runner=self.service.runner)
+        if self._cached_environment is None:
+            self._cached_environment = detect_environment(runner=self.service.runner)
+        return self._cached_environment
 
     def tasks(
         self, paths: Sequence[Path], detections: Mapping[Path, object]
@@ -191,7 +214,10 @@ class InteractiveController:
             if isinstance(detection, Mapping):
                 value = detection.get("format", value)
             normalized = str(getattr(value, "value", value))
-            if normalized == SourceFormat.PCAP.value and not self._environment().tshark_path:
+            environment = self._environment()
+            if normalized == SourceFormat.PCAP.value and not environment.tshark_path:
+                continue
+            if normalized == SourceFormat.EVTX.value and not environment.python_evtx_version:
                 continue
             available.update(_TASKS_BY_FORMAT.get(normalized, set()))
         return tuple(
@@ -257,12 +283,18 @@ class InteractiveController:
                 if summary.cancelled:
                     break
         self.current_case = case.root
+        self.current_paths = tuple(paths)
         self.state.last_directory = paths[0].parent if paths else self.default_directory
         self.state.last_case = case.root
         self.state_store.save(self.state)
         bundle = self.service.report_bundle(case.root)
         view = _view_from_bundle(bundle)
-        return ResultView(combined, view.findings, view.diagnostics)
+        return ResultView(
+            combined,
+            view.findings,
+            view.diagnostics,
+            detail_available=self._detail_available(),
+        )
 
     def open_results(self, paths: Sequence[Path]) -> ResultView:
         del paths
@@ -270,7 +302,86 @@ class InteractiveController:
         if case is None:
             raise FileNotFoundError("최근 사례 결과를 찾을 수 없습니다")
         self.current_case = case
-        return _view_from_bundle(self.service.report_bundle(case))
+        bundle = self.service.report_bundle(case)
+        self.current_paths = tuple(Path(str(source["path"])) for source in bundle["sources"])
+        view = _view_from_bundle(bundle)
+        return ResultView(
+            view.summary,
+            view.findings,
+            view.diagnostics,
+            detail_available=self._detail_available(),
+        )
+
+    def _detail_available(self) -> bool:
+        if not self._environment().tshark_path:
+            return False
+        for path in self.current_paths:
+            try:
+                if self.service.detect(path).format is SourceFormat.PCAP:
+                    return True
+            except (OSError, ValueError):
+                continue
+        return False
+
+    def detail_tasks(self) -> Sequence[TaskOption]:
+        available = self._detail_available()
+        return tuple(
+            TaskOption(
+                task.key,
+                task.label,
+                available,
+                "선택한 사례에 사용 가능한 PCAP과 TShark가 필요합니다",
+            )
+            for task in DETAIL_TASKS
+        )
+
+    def analyze_detail(self, selected_tasks: frozenset[str]) -> ResultView:
+        case = self._usable_case()
+        if case is None:
+            raise FileNotFoundError("상세 분석할 최근 사례 결과가 없습니다")
+        packet_paths: list[Path] = []
+        for path in self.current_paths:
+            try:
+                if self.service.detect(path).format is SourceFormat.PCAP:
+                    packet_paths.append(path)
+            except (OSError, ValueError):
+                continue
+        if not packet_paths:
+            raise FileNotFoundError("상세 분석할 PCAP/PCAPNG 입력을 찾을 수 없습니다")
+        combined = AnalysisSummary(case)
+        comprehensive_tasks = selected_tasks | {
+            "network_summary",
+            "http_requests",
+            "literal_search",
+        }
+        with analysis_progress(console=self.terminal) as display:
+            progress_id = display.add_task("상세 분석 준비", total=None)
+            for path in packet_paths:
+
+                def update(item: Progress, *, name: str = path.name) -> None:
+                    message = strip_terminal_controls(item.message)
+                    description = f"{strip_terminal_controls(name)} · {item.stage}"
+                    if message:
+                        description += f" · {message}"
+                    display.update(progress_id, description=description, completed=item.processed)
+
+                summary = self.service.analyze(
+                    path,
+                    case_dir=case,
+                    profile="custom",
+                    forced_type="pcap",
+                    selected_tasks=comprehensive_tasks,
+                    progress=update,
+                )
+                _merge_summary(combined, summary)
+        bundle = self.service.report_bundle(case)
+        view = _view_from_bundle(bundle)
+        return ResultView(
+            combined,
+            view.findings,
+            view.diagnostics,
+            detail_available=True,
+        )
 
     def search(self, text: str) -> Sequence[object]:
         case = self._usable_case()
@@ -372,7 +483,7 @@ def analyze_command(
     case: Annotated[Path | None, typer.Option("--case", help="사례 결과 폴더")] = None,
     input_type: Annotated[
         str | None,
-        typer.Option("--type", help="text, web, linux_auth, pcap"),
+        typer.Option("--type", help="text, web, linux_auth, pcap, evtx"),
     ] = None,
     tasks: Annotated[
         str | None,
@@ -467,24 +578,47 @@ def timeline_command(
     _rows_table("시간 미상", unknown, columns)
 
 
+@app.command("correlate")
+def correlate_command(
+    ctx: typer.Context,
+    case: Annotated[Path, typer.Option("--case", help="사례 결과 폴더")],
+    value: Annotated[str | None, typer.Option("--value", help="정확히 일치시킬 값")] = None,
+    kind: Annotated[
+        str | None, typer.Option("--kind", help="ip, domain, account, filename")
+    ] = None,
+    min_sources: Annotated[int, typer.Option("--min-sources", min=1)] = 2,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=10000)] = 100,
+) -> None:
+    """여러 입력 자료에서 함께 관측된 식별자를 표시합니다."""
+
+    try:
+        rows = _make_service(ctx.obj.get("config")).correlations(
+            case,
+            value=value,
+            kind=kind,
+            min_sources=min_sources,
+            limit=limit,
+        )
+    except (OSError, ValueError) as exc:
+        render_error("교차 자료", exc, "사례 경로와 종류·값을 확인하세요.", console=console)
+        raise typer.Exit(2) from exc
+    _rows_table(
+        "교차 자료 관측(동일 값은 인과관계를 뜻하지 않음)",
+        rows,
+        ("kind", "value", "source_ids", "occurrences", "examples"),
+    )
+
+
 @app.command("report")
 def report_command(
     ctx: typer.Context,
     case: Annotated[Path, typer.Option("--case", help="사례 결과 폴더")],
-    format: Annotated[str, typer.Option("--format", help="markdown, json, csv")] = "markdown",
+    format: Annotated[str, typer.Option("--format", help="markdown, json, csv, html")] = "markdown",
     output: Annotated[Path | None, typer.Option("--output", help="출력 파일 경로")] = None,
 ) -> None:
     """사례 최신 run을 오프라인 보고서로 저장합니다."""
 
     normalized = format.casefold()
-    if normalized == "html":
-        render_error(
-            "보고서",
-            "HTML 보고서는 Phase 2 준비 중입니다.",
-            "markdown, json, csv 중 하나를 선택하세요.",
-            console=console,
-        )
-        raise typer.Exit(2)
     extension = "md" if normalized in {"markdown", "md"} else normalized
     if output is None:
         output = case_paths(case).reports / f"fieldtrace-report.{extension}"

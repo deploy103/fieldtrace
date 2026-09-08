@@ -63,6 +63,11 @@ ANALYSIS_TASKS: tuple[TaskOption, ...] = (
     TaskOption("literal_search", "플래그·문자열 찾기"),
 )
 
+DETAIL_TASKS: tuple[TaskOption, ...] = (
+    TaskOption("tcp_streams", "TCP 대화 재조립 보기"),
+    TaskOption("object_extraction", "HTTP 본문 파일 추출"),
+)
+
 RESULT_ACTIONS: tuple[MenuOption[str], ...] = (
     MenuOption("검색", "search"),
     MenuOption("시간순 보기", "timeline"),
@@ -232,6 +237,7 @@ def choose_source_format(
         MenuOption("Apache/Nginx 웹 로그", "web"),
         MenuOption("OpenSSH/sudo 인증 로그", "linux_auth"),
         MenuOption("PCAP/PCAPNG 패킷", "pcap"),
+        MenuOption("Windows EVTX 이벤트 로그", "evtx"),
     )
     default = next((i for i, option in enumerate(options, 1) if option.value == detected), None)
     return choose_one(

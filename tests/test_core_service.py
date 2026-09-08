@@ -12,6 +12,7 @@ from fieldtrace.core.models import (
     AnalysisContext,
     AnalysisItem,
     Capability,
+    Diagnostic,
     Environment,
     Event,
     EvidenceRef,
@@ -133,6 +134,67 @@ def test_quick_budget_partial_is_success_exit_zero(tmp_path: Path) -> None:
     assert summary.partial and summary.failures == 0
     assert run.status == "completed" and run.coverage == "partial"
     assert exit_code(summary) == 0
+
+
+class BudgetDiagnosticAnalyzer(IsolatingAnalyzer):
+    name = "budget-diagnostic"
+
+    def analyze(self, context: AnalysisContext) -> Iterator[AnalysisItem]:
+        del context
+        yield Diagnostic(
+            "warning",
+            "budget",
+            "합성 출력 제한에 도달했습니다.",
+            "범위를 줄이세요.",
+        )
+
+
+def test_full_profile_output_limit_is_incomplete_exit_one(tmp_path: Path) -> None:
+    path = tmp_path / "limited.log"
+    path.write_text("limited", encoding="utf-8")
+    case = tmp_path / "case"
+    service = FieldTraceService(RuntimeConfig(), AnalyzerRegistry((BudgetDiagnosticAnalyzer(),)))
+
+    summary = service.analyze(path, case_dir=case, profile="full", forced_type="text")
+
+    with CaseStore(case, create=False) as store:
+        run = store.list_runs()[0]
+    assert summary.partial and summary.failures == 1
+    assert run.status == "partial" and run.coverage == "partial"
+    assert exit_code(summary) == 1
+
+
+class ArtifactAnalyzer(IsolatingAnalyzer):
+    name = "artifact"
+
+    def analyze(self, context: AnalysisContext) -> Iterator[AnalysisItem]:
+        assert context.artifact_sink is not None
+        evidence = EvidenceRef(context.source_id, "text_line", "line:1", "derived source")
+        yield context.artifact_sink.write_bytes(
+            "derived.bin",
+            b"derived bytes",
+            kind="test.object",
+            analyzer=self.name,
+            evidence=evidence,
+        )
+
+
+def test_service_owns_derived_write_and_persists_artifact(tmp_path: Path) -> None:
+    path = tmp_path / "source.log"
+    path.write_text("source", encoding="utf-8")
+    case = tmp_path / "case"
+    service = FieldTraceService(RuntimeConfig(), AnalyzerRegistry((ArtifactAnalyzer(),)))
+
+    summary = service.analyze(path, case_dir=case, profile="full", forced_type="text")
+    bundle = service.report_bundle(case)
+
+    assert not summary.partial
+    assert len(bundle["artifacts"]) == 1
+    artifact = bundle["artifacts"][0]
+    derived = Path(artifact["path"])
+    assert derived.is_relative_to((case / "derived").resolve())
+    assert derived.read_bytes() == b"derived bytes"
+    assert artifact["evidence_locator"] == "line:1"
 
 
 def test_unparsed_web_line_is_partial_failure(tmp_path: Path) -> None:

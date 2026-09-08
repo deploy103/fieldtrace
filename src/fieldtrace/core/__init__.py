@@ -12,7 +12,7 @@ from .runner import (
     ExternalToolTimeout,
     SafeExternalRunner,
 )
-from .search import EvidenceDetail, SearchHit, TimelineEntry
+from .search import CorrelationEntry, EvidenceDetail, SearchHit, TimelineEntry
 from .service import FieldTraceService, InputError, builtin_registry, exit_code
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "CasePaths",
     "CaseStore",
     "ConfigError",
+    "CorrelationEntry",
     "DetectionResult",
     "DoctorCheck",
     "DoctorResult",

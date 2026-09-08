@@ -41,6 +41,7 @@ _TSHARK_FIELDS = (
     "frame.number",
     "frame.time_epoch",
     "frame.protocols",
+    "tcp.stream",
     "ip.src",
     "ip.dst",
     "ipv6.src",
@@ -53,6 +54,7 @@ _TSHARK_FIELDS = (
     "http.request.method",
     "http.host",
     "http.request.uri",
+    "http.file_data",
     "_ws.col.protocol",
 )
 
@@ -60,19 +62,27 @@ _TSHARK_FIELDS = (
 def detect_environment(*, runner: SafeExternalRunner | None = None) -> Environment:
     """Detect optional tools without turning their absence into a global error."""
 
+    try:
+        evtx_version = importlib.metadata.version("python-evtx")
+    except importlib.metadata.PackageNotFoundError:
+        evtx_version = None
     tshark_path = shutil.which("tshark")
     if tshark_path is None:
-        return Environment()
+        return Environment(python_evtx_version=evtx_version)
     active_runner = runner or SafeExternalRunner(default_timeout=10, default_max_output=65_536)
     try:
         code, stdout, stderr = active_runner.run(
             [tshark_path, "--version"], cancel=Event(), timeout=10, max_output_bytes=65_536
         )
     except ExternalToolError:
-        return Environment(tshark_path=tshark_path)
+        return Environment(tshark_path=tshark_path, python_evtx_version=evtx_version)
     lines = (stdout or stderr).splitlines()
     version = lines[0] if code == 0 and lines else None
-    return Environment(tshark_path=tshark_path, tshark_version=version)
+    return Environment(
+        tshark_path=tshark_path,
+        tshark_version=version,
+        python_evtx_version=evtx_version,
+    )
 
 
 def run_doctor(config: RuntimeConfig, *, runner: SafeExternalRunner | None = None) -> DoctorResult:
@@ -91,7 +101,7 @@ def run_doctor(config: RuntimeConfig, *, runner: SafeExternalRunner | None = Non
             "Python 3.12 환경에서 실행하세요." if not python_ok else "",
         )
     )
-    for distribution in ("typer", "rich"):
+    for distribution, required in (("typer", True), ("rich", True), ("python-evtx", False)):
         try:
             version = importlib.metadata.version(distribution)
         except importlib.metadata.PackageNotFoundError:
@@ -99,13 +109,13 @@ def run_doctor(config: RuntimeConfig, *, runner: SafeExternalRunner | None = Non
                 DoctorCheck(
                     distribution,
                     False,
-                    True,
+                    required,
                     "설치되지 않음",
                     "준비 환경에서 uv sync를 실행하세요.",
                 )
             )
         else:
-            checks.append(DoctorCheck(distribution, True, True, version))
+            checks.append(DoctorCheck(distribution, True, required, version))
 
     case_base = config.paths.cases.expanduser().resolve()
     try:
@@ -190,4 +200,11 @@ def run_doctor(config: RuntimeConfig, *, runner: SafeExternalRunner | None = Non
                     "TShark 설치와 실행 권한을 확인하세요.",
                 )
             )
-    return DoctorResult(tuple(checks), Environment(tshark_path, tshark_version))
+    try:
+        evtx_version = importlib.metadata.version("python-evtx")
+    except importlib.metadata.PackageNotFoundError:
+        evtx_version = None
+    return DoctorResult(
+        tuple(checks),
+        Environment(tshark_path, tshark_version, evtx_version),
+    )

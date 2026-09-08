@@ -7,11 +7,15 @@ from rich.console import Console
 
 from fieldtrace.core.models import AnalysisSummary, Diagnostic, EvidenceRef, Finding
 from fieldtrace.reports import ReportBundle, export_report, protect_csv_cell
+from fieldtrace.ui.menu import DetectionView, ResultView, run_menu
 from fieldtrace.ui.menus import (
+    ANALYSIS_TASKS,
     MenuStatus,
+    TaskOption,
     choose_analysis_mode,
     choose_files,
     choose_result_action,
+    choose_source_format,
 )
 from fieldtrace.ui.presentation import render_error, render_result
 from fieldtrace.ui.safety import normalize_pasted_path, strip_paired_quotes, windows_path_to_wsl
@@ -85,6 +89,79 @@ def test_unimplemented_detail_action_is_disabled() -> None:
     assert "현재 사용할 수 없습니다" in output
 
 
+def test_manual_format_menu_includes_evtx() -> None:
+    result = choose_source_format(input_fn=_answers("5"))
+
+    assert result.status is MenuStatus.SELECTED
+    assert result.value == "evtx"
+
+
+class DetailMenuController:
+    def __init__(self, directory: Path) -> None:
+        self.default_directory = directory
+        self.selected: frozenset[str] = frozenset()
+
+    def list(self, directory: Path):  # type: ignore[no-untyped-def]
+        return tuple(directory.iterdir())
+
+    def detect(self, paths):  # type: ignore[no-untyped-def]
+        return {path: DetectionView("pcap", "magic", confidence=1.0) for path in paths}
+
+    def tasks(self, paths, detections):  # type: ignore[no-untyped-def]
+        del paths, detections
+        return ANALYSIS_TASKS
+
+    def has_results(self, paths):  # type: ignore[no-untyped-def]
+        del paths
+        return False
+
+    def analyze(self, paths, **_kwargs):  # type: ignore[no-untyped-def]
+        del paths
+        return ResultView(AnalysisSummary(self.default_directory), detail_available=True)
+
+    def detail_tasks(self):  # type: ignore[no-untyped-def]
+        return (TaskOption("tcp_streams", "TCP 대화 재조립 보기"),)
+
+    def analyze_detail(self, selected_tasks):  # type: ignore[no-untyped-def]
+        self.selected = selected_tasks
+        return ResultView(AnalysisSummary(self.default_directory), detail_available=True)
+
+    def open_results(self, paths):  # type: ignore[no-untyped-def]
+        del paths
+        raise AssertionError
+
+    def search(self, text):  # type: ignore[no-untyped-def]
+        del text
+        return ()
+
+    def timeline(self):  # type: ignore[no-untyped-def]
+        return ()
+
+    def evidence(self, item):  # type: ignore[no-untyped-def]
+        del item
+        return None
+
+    def report(self, format):  # type: ignore[no-untyped-def]
+        del format
+        raise AssertionError
+
+
+def test_result_menu_runs_available_detail_analysis(tmp_path: Path) -> None:
+    (tmp_path / "capture.pcap").write_bytes(b"pcap")
+    controller = DetailMenuController(tmp_path)
+    console = Console(width=80, record=True, force_terminal=False, color_system=None)
+
+    result = run_menu(
+        controller,
+        input_fn=_answers("1", "", "3", "1", "6"),
+        console=console,
+    )
+
+    assert result == 0
+    assert controller.selected == frozenset({"tcp_streams"})
+    assert "TCP 대화 재조립 보기" in console.export_text()
+
+
 def test_file_result_diagnostic_and_error_fit_80_columns(tmp_path: Path) -> None:
     long_name = "아주 긴 한글 증거 파일 이름과 공백 " * 4 + ".log"
     evidence_path = tmp_path / long_name
@@ -142,6 +219,24 @@ def test_report_json_preserves_raw_and_csv_prevents_formula(tmp_path: Path) -> N
                 },
             }
         ],
+        artifacts=[
+            {
+                "path": "/case/derived/object.bin",
+                "kind": "http.object",
+                "sha256": "abc",
+                "analyzer": "pcap",
+                "evidence_locator": "frame:9",
+            }
+        ],
+        correlations=[
+            {
+                "kind": "ip",
+                "value": "192.0.2.9",
+                "source_ids": [1, 2],
+                "occurrences": 2,
+                "interpretation": "인과관계 아님",
+            }
+        ],
     )
     json_path = export_report(bundle, tmp_path / "report.json", "json")
     csv_path = export_report(bundle, tmp_path / "report.csv", "csv")
@@ -151,3 +246,63 @@ def test_report_json_preserves_raw_and_csv_prevents_formula(tmp_path: Path) -> N
     ].startswith("=")
     assert "'=cmd" in csv_path.read_text(encoding="utf-8-sig")
     assert protect_csv_cell(" harmless") == " harmless"
+
+
+def test_html_report_is_self_contained_searchable_and_escapes_evidence(
+    tmp_path: Path,
+) -> None:
+    malicious = '<script src="https://attacker.invalid/x.js">alert(1)</script>'
+    bundle = ReportBundle.build(
+        case={"id": "case"},
+        events=[
+            {
+                "id": 7,
+                "category": "evtx.record",
+                "summary": "원문 검토",
+                "evidence_kind": "evtx",
+                "evidence_locator": "channel:Security;record:77",
+                "evidence_preview": malicious,
+            }
+        ],
+        findings=[
+            {
+                "id": 1,
+                "title": "후보 <검토>",
+                "observation": "FLAG{html}",
+                "evidence": {
+                    "source_id": 1,
+                    "locator": "line:2",
+                    "preview": malicious,
+                },
+            }
+        ],
+        artifacts=[
+            {
+                "path": "/case/derived/object.bin",
+                "kind": "http.object",
+                "sha256": "abc",
+                "analyzer": "pcap",
+                "evidence_locator": "frame:9",
+            }
+        ],
+        correlations=[
+            {
+                "kind": "ip",
+                "value": "192.0.2.9",
+                "source_ids": [1, 2],
+                "occurrences": 2,
+                "interpretation": "인과관계 아님",
+            }
+        ],
+    )
+
+    path = export_report(bundle, tmp_path / "report.html", "html")
+    html = path.read_text(encoding="utf-8")
+
+    assert "id=report-search" in html
+    assert "channel:Security;record:77" in html
+    assert "&lt;script src=&quot;https://attacker.invalid/x.js&quot;&gt;" in html
+    assert malicious not in html
+    assert '<script src="https://attacker.invalid/x.js">' not in html
+    assert "/case/derived/object.bin" in html
+    assert "192.0.2.9" in html

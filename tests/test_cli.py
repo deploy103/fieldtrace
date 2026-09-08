@@ -50,17 +50,36 @@ def test_cli_analyze_search_timeline_report(tmp_path: Path) -> None:
     assert payload["events"][0]["evidence_locator"] == "line:1"
 
 
-def test_cli_invalid_input_and_unimplemented_html_are_exit_two(tmp_path: Path) -> None:
+def test_cli_invalid_input_is_exit_two(tmp_path: Path) -> None:
     missing = runner.invoke(app, ["analyze", str(tmp_path / "missing.log")])
-    html = runner.invoke(
-        app,
-        ["report", "--case", str(tmp_path), "--format", "html"],
-    )
 
     assert missing.exit_code == 2
     assert "실패 단계" in missing.output
-    assert html.exit_code == 2
-    assert "Phase 2" in html.output
+
+
+def test_cli_exports_offline_html_report(tmp_path: Path) -> None:
+    evidence = tmp_path / "evidence.log"
+    evidence.write_text("FLAG{html_cli}\n", encoding="utf-8")
+    case = tmp_path / "case"
+    analyzed = runner.invoke(app, ["analyze", str(evidence), "--case", str(case)])
+    output = tmp_path / "report.html"
+
+    reported = runner.invoke(
+        app,
+        [
+            "report",
+            "--case",
+            str(case),
+            "--format",
+            "html",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert analyzed.exit_code == 0, analyzed.output
+    assert reported.exit_code == 0, reported.output
+    assert "FLAG{html_cli}" in output.read_text(encoding="utf-8")
 
 
 def test_cli_explicit_cp949_encoding(tmp_path: Path) -> None:
@@ -92,6 +111,23 @@ def test_cli_rejects_unreviewed_encoding(tmp_path: Path) -> None:
 
     assert result.exit_code == 2
     assert "지원하지 않는 텍스트 인코딩" in result.output
+
+
+def test_cli_correlates_same_indicator_across_inputs(tmp_path: Path) -> None:
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.log"
+    first.write_text("source 192.0.2.99 shared.example.test\n", encoding="utf-8")
+    second.write_text("destination 192.0.2.99 shared.example.test\n", encoding="utf-8")
+    case = tmp_path / "case"
+
+    analyzed = runner.invoke(app, ["analyze", str(first), str(second), "--case", str(case)])
+    correlated = runner.invoke(app, ["correlate", "--case", str(case)])
+
+    assert analyzed.exit_code == 0, analyzed.output
+    assert correlated.exit_code == 0, correlated.output
+    assert "192.0.2.99" in correlated.output
+    assert "shared.example.test" in correlated.output
+    assert "인과관계를 뜻하지 않음" in correlated.output
 
 
 def test_no_argument_menu_quits_cleanly(tmp_path: Path) -> None:

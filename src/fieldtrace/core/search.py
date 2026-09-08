@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +47,150 @@ class EvidenceDetail:
     preview: str | None
     truncated: bool
     fields: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CorrelationEntry:
+    kind: str
+    value: str
+    source_ids: tuple[int, ...]
+    event_ids: tuple[int, ...]
+    occurrences: int
+    examples: tuple[str, ...]
+    interpretation: str = "여러 자료의 동일 값 관측이며 인과관계를 뜻하지 않습니다."
+
+
+_DOMAIN_RE = re.compile(
+    r"^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z]{2,63}\.?$"
+)
+_ACCOUNT_KEYS = {
+    "user",
+    "username",
+    "targetusername",
+    "subjectusername",
+    "actor",
+    "account",
+    "accountname",
+}
+_FILENAME_KEYS = {"image", "newprocessname", "imagepath", "filename", "file_name"}
+_DOMAIN_KEYS = {"domain", "hostname", "host", "query", "dns_query"}
+
+
+def _scalar_fields(value: Any, prefix: str = "") -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            found.extend(_scalar_fields(nested, str(key)))
+    elif isinstance(value, list):
+        for nested in value:
+            found.extend(_scalar_fields(nested, prefix))
+    elif isinstance(value, (str, int)):
+        found.append((prefix.casefold(), str(value)))
+    return found
+
+
+def _correlation_values(row: dict[str, Any]) -> set[tuple[str, str, str]]:
+    """Return kind, normalized value, and display value from explicit event fields."""
+
+    values: set[tuple[str, str, str]] = set()
+    for column in ("src_ip", "dst_ip"):
+        raw = row.get(column)
+        if raw:
+            try:
+                normalized = str(ip_address(str(raw)))
+            except ValueError:
+                continue
+            values.add(("ip", normalized, normalized))
+    raw_user = row.get("user")
+    if raw_user and str(raw_user) != "-":
+        display = str(raw_user)
+        values.add(("account", display.casefold(), display))
+    try:
+        fields = json.loads(row.get("fields_json") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        fields = {}
+    indicator_type = (
+        str(fields.get("indicator_type", "")).casefold() if isinstance(fields, dict) else ""
+    )
+    for key, raw in _scalar_fields(fields):
+        value = raw.strip()
+        if not value or value == "-":
+            continue
+        if key in {"src_ip", "dst_ip", "sourceip", "destinationip", "ipaddress"} or (
+            key == "value" and indicator_type == "ip"
+        ):
+            try:
+                normalized_ip = str(ip_address(value))
+            except ValueError:
+                pass
+            else:
+                values.add(("ip", normalized_ip, normalized_ip))
+        if key in _DOMAIN_KEYS or (key == "value" and indicator_type == "domain"):
+            domain = value.rstrip(".")
+            if _DOMAIN_RE.fullmatch(domain):
+                values.add(("domain", domain.casefold(), domain))
+        if key in _ACCOUNT_KEYS:
+            values.add(("account", value.casefold(), value))
+        if key in _FILENAME_KEYS:
+            filename = value.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+            if filename:
+                values.add(("filename", filename.casefold(), filename))
+    return values
+
+
+def correlations(
+    store: CaseStore,
+    *,
+    value: str | None = None,
+    kind: str | None = None,
+    min_sources: int = 2,
+    limit: int = 100,
+    latest_only: bool = True,
+) -> list[CorrelationEntry]:
+    if kind is not None and kind not in {"ip", "domain", "account", "filename"}:
+        raise ValueError("교차 자료 종류는 ip, domain, account, filename 중 하나여야 합니다.")
+    if min_sources < 1 or limit < 1:
+        raise ValueError("min_sources와 limit은 0보다 커야 합니다.")
+    run_ids = store.latest_run_ids() if latest_only else None
+    rows = store.event_rows(run_ids=run_ids)
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    wanted = value.casefold() if value is not None else None
+    for row in rows:
+        for entry_kind, normalized, display in _correlation_values(row):
+            if kind is not None and entry_kind != kind:
+                continue
+            if wanted is not None and normalized != wanted:
+                continue
+            group = grouped.setdefault(
+                (entry_kind, normalized),
+                {
+                    "display": display,
+                    "sources": set(),
+                    "events": [],
+                    "examples": [],
+                },
+            )
+            group["sources"].add(int(row["source_id"]))
+            group["events"].append(int(row["id"]))
+            if len(group["examples"]) < 3:
+                group["examples"].append(
+                    f"source:{row['source_id']} {row['evidence_locator']} {row['summary']}"
+                )
+    results = [
+        CorrelationEntry(
+            kind=entry_kind,
+            value=str(group["display"]),
+            source_ids=tuple(sorted(group["sources"])),
+            event_ids=tuple(group["events"]),
+            occurrences=len(group["events"]),
+            examples=tuple(group["examples"]),
+        )
+        for (entry_kind, _normalized), group in grouped.items()
+        if len(group["sources"]) >= min_sources
+    ]
+    results.sort(key=lambda item: (-len(item.source_ids), -item.occurrences, item.kind, item.value))
+    return results[:limit]
 
 
 def _latest_clause(
@@ -203,6 +349,7 @@ def report_bundle(store: CaseStore, *, latest_only: bool = True) -> dict[str, An
     elif latest_only:
         artifacts_sql += " WHERE 0"
     artifacts = store.rows(artifacts_sql + " ORDER BY id", parameters)
+    correlated = [asdict(item) for item in correlations(store, latest_only=latest_only)]
     for row in [*events, *findings]:
         for key in ("fields_json", "related_event_ids_json"):
             if key in row:
@@ -223,5 +370,6 @@ def report_bundle(store: CaseStore, *, latest_only: bool = True) -> dict[str, An
         "events": events,
         "findings": findings,
         "artifacts": artifacts,
+        "correlations": correlated,
         "diagnostics": diagnostics,
     }

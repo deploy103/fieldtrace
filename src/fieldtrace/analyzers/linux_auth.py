@@ -21,6 +21,7 @@ from fieldtrace.analyzers._common import (
     requested,
     text_encoding,
 )
+from fieldtrace.analyzers.decoding import DecodeTracker, decoded_items
 from fieldtrace.core.models import (
     AnalysisContext,
     AnalysisItem,
@@ -147,6 +148,7 @@ class LinuxAuthAnalyzer:
         counters: Counter[str] = Counter()
         users: Counter[str] = Counter()
         source_ips: Counter[str] = Counter()
+        decode_tracker = DecodeTracker()
         want_auth = requested(context, "login_activity", "auth", "login", "logins")
         want_commands = requested(
             context, "executed_commands", "commands", "command", "sudo", "execution"
@@ -266,7 +268,7 @@ class LinuxAuthAnalyzer:
                 )
 
             if want_flags:
-                for value in extract_flags(item.text):
+                for value in extract_flags(item.text, context.flag_prefixes):
                     yield Finding(
                         rule_id="linux_auth.flag_candidate",
                         title="인증 로그의 플래그 형태 문자열 후보",
@@ -278,6 +280,13 @@ class LinuxAuthAnalyzer:
                         evidence=evidence,
                         fields={"value": value},
                     )
+                yield from decoded_items(
+                    context,
+                    item.text,
+                    evidence,
+                    rule_prefix="linux_auth",
+                    tracker=decode_tracker,
+                )
             if processed % PROGRESS_INTERVAL == 0:
                 yield progress("linux_auth", processed, "인증 이벤트 집계 중")
 

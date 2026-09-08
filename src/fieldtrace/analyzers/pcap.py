@@ -20,6 +20,13 @@ from fieldtrace.analyzers._common import (
     progress,
     requested,
 )
+from fieldtrace.analyzers.decoding import DecodeTracker, decoded_items
+from fieldtrace.analyzers.network_rules import (
+    DNS_FREQUENCY,
+    dns_length_reasons,
+    http_request_reasons,
+)
+from fieldtrace.analyzers.pcap_details import http_object_items, tcp_stream_items
 from fieldtrace.core.models import (
     AnalysisContext,
     AnalysisItem,
@@ -47,6 +54,7 @@ _FIELDS = (
     "frame.time_epoch",
     "_ws.col.protocol",
     "frame.protocols",
+    "tcp.stream",
     "ip.src",
     "ipv6.src",
     "ip.dst",
@@ -131,7 +139,13 @@ class PcapAnalyzer:
         return Capability(
             available=True,
             reason=f"TShark 사용 가능 ({environment.tshark_version or '버전 미확인'})",
-            features=("network_summary", "http_requests", "literal_search"),
+            features=(
+                "network_summary",
+                "http_requests",
+                "literal_search",
+                "tcp_streams",
+                "object_extraction",
+            ),
         )
 
     def _argv(self, path: Path) -> list[str]:
@@ -178,7 +192,12 @@ class PcapAnalyzer:
         want_dns = requested(context, "network_summary", "dns", "domains", "ip_domain", "network")
         want_http = requested(context, "http_requests", "http", "web", "network")
         want_flags = requested(context, "literal_search", "flags", "flag", "strings")
-        if context.selected_tasks and not (want_network or want_dns or want_http or want_flags):
+        normalized_tasks = {task.casefold().replace("-", "_") for task in context.selected_tasks}
+        want_streams = "tcp_streams" in normalized_tasks
+        want_objects = "object_extraction" in normalized_tasks
+        if context.selected_tasks and not (
+            want_network or want_dns or want_http or want_flags or want_streams or want_objects
+        ):
             yield Diagnostic(
                 level="warning",
                 stage="selection",
@@ -253,7 +272,11 @@ class PcapAnalyzer:
         ip_counts: Counter[str] = Counter()
         port_counts: Counter[str] = Counter()
         dns_counts: Counter[str] = Counter()
+        dns_evidence: dict[str, EvidenceRef] = {}
+        dns_length_reported: set[str] = set()
         http_counts: Counter[str] = Counter()
+        stream_ids: set[int] = set()
+        decode_tracker = DecodeTracker()
         reader = csv.reader(io.StringIO(stdout), delimiter="\t", quotechar='"')
         for row in reader:
             reason = limit_reason(context, packets)
@@ -278,6 +301,9 @@ class PcapAnalyzer:
             protocol = values["_ws.col.protocol"] or values["frame.protocols"].rsplit(":", 1)[-1]
             protocol = protocol or "UNKNOWN"
             protocols = [part for part in values["frame.protocols"].split(":") if part]
+            stream_id = _integer(values["tcp.stream"])
+            if stream_id is not None:
+                stream_ids.add(stream_id)
             protocol_counts[protocol] += 1
             for address in (src_ip, dst_ip):
                 if address:
@@ -312,7 +338,9 @@ class PcapAnalyzer:
                 )
 
             for query in _split_occurrences(values["dns.qry.name"]):
-                dns_counts[query.casefold()] += 1
+                normalized_query = query.casefold()
+                dns_counts[normalized_query] += 1
+                dns_evidence.setdefault(normalized_query, evidence)
                 if want_dns or want_flags:
                     yield Event(
                         category="network.dns_query",
@@ -326,6 +354,22 @@ class PcapAnalyzer:
                         src_port=src_port,
                         dst_port=dst_port,
                         fields={"frame": _integer(frame), "query": query},
+                    )
+                reasons = dns_length_reasons(query)
+                if want_dns and reasons and normalized_query not in dns_length_reported:
+                    dns_length_reported.add(normalized_query)
+                    yield Finding(
+                        rule_id="pcap.dns_long_query_candidate",
+                        title="긴 DNS 질의 검토 후보",
+                        observation=f"{query}: {', '.join(reasons)}",
+                        interpretation=(
+                            "긴 질의는 터널링 등 여러 원인에서 나타날 수 있는 후보이며 "
+                            "공격을 확정하지 않습니다."
+                        ),
+                        confidence="medium",
+                        evidence=evidence,
+                        severity="low",
+                        fields={"query": query, "reasons": reasons},
                     )
 
             method = values["http.request.method"]
@@ -354,8 +398,31 @@ class PcapAnalyzer:
                         "uri_decoded": uri_decoded,
                     },
                 )
+                reasons = http_request_reasons(method, uri_raw, uri_decoded)
+                if want_http and reasons:
+                    yield Finding(
+                        rule_id="pcap.http_request_candidate",
+                        title="검토가 필요한 HTTP 요청 후보",
+                        observation=f"{method} {host}{uri_decoded}: {', '.join(reasons)}",
+                        interpretation=(
+                            "문자열 규칙에 일치한 요청이며 취약점 악용이나 "
+                            "침입을 확정하지 않습니다."
+                        ),
+                        confidence="medium",
+                        evidence=evidence,
+                        severity="low",
+                        fields={
+                            "frame": _integer(frame),
+                            "method": method,
+                            "host": host,
+                            "uri_raw": uri_raw,
+                            "uri_decoded": uri_decoded,
+                            "reasons": reasons,
+                        },
+                    )
             if want_flags:
-                for value in extract_flags(unquote(" ".join((host, uri_raw)), errors="replace")):
+                flag_text = unquote(" ".join((host, uri_raw)), errors="replace")
+                for value in extract_flags(flag_text, context.flag_prefixes):
                     yield Finding(
                         rule_id="pcap.flag_candidate",
                         title="패킷 HTTP 필드의 플래그 형태 문자열 후보",
@@ -367,8 +434,41 @@ class PcapAnalyzer:
                         evidence=evidence,
                         fields={"frame": _integer(frame), "value": value},
                     )
+                yield from decoded_items(
+                    context,
+                    flag_text,
+                    evidence,
+                    rule_prefix="pcap",
+                    tracker=decode_tracker,
+                )
             if packets % PROGRESS_INTERVAL == 0:
                 yield progress("pcap.parse", packets, "패킷 필드 집계 중")
+
+        if want_dns:
+            for query, count in dns_counts.most_common():
+                if count < DNS_FREQUENCY:
+                    break
+                yield Finding(
+                    rule_id="pcap.dns_frequency_candidate",
+                    title="빈도가 높은 DNS 질의 검토 후보",
+                    observation=f"{query} 질의를 {count:,}회 관측했습니다.",
+                    interpretation=(
+                        "높은 빈도는 정상 재시도나 자동화에서도 발생하며 공격을 확정하지 않습니다."
+                    ),
+                    confidence="medium",
+                    evidence=dns_evidence.get(query),
+                    severity="low",
+                    fields={
+                        "query": query,
+                        "count": count,
+                        "threshold": DNS_FREQUENCY,
+                    },
+                )
+
+        if want_streams:
+            yield from tcp_stream_items(context, self._tshark_path, stream_ids)
+        if want_objects:
+            yield from http_object_items(context, self._tshark_path, analyzer=self.name)
 
         yield Finding(
             rule_id="pcap.summary",

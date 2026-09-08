@@ -51,6 +51,9 @@ class RuntimeConfig:
     paths: PathSettings = field(default_factory=PathSettings)
     time_policy: TimePolicy = field(default_factory=TimePolicy)
     flag_prefixes: tuple[str, ...] = ("FLAG", "flag", "CTF", "ctf")
+    decode_max_depth: int = 2
+    decode_max_output_chars: int = 4_096
+    decode_max_candidates: int = 20
     source_path: Path | None = None
 
 
@@ -129,6 +132,11 @@ def load_config(path: Path | str | None = None) -> RuntimeConfig:
     prefixes = patterns.get("flag_prefixes", ["FLAG", "flag", "CTF", "ctf"])
     if not isinstance(prefixes, list) or not all(isinstance(item, str) for item in prefixes):
         raise ConfigError("flag_prefixes 값은 문자열 배열이어야 합니다.")
+    if not prefixes or any(
+        not item or len(item) > 64 or any(character in "{}\r\n" for character in item)
+        for item in prefixes
+    ):
+        raise ConfigError("flag_prefixes에는 1~64자의 줄바꿈·중괄호 없는 값을 지정하세요.")
     return RuntimeConfig(
         analysis=settings,
         paths=PathSettings(
@@ -137,5 +145,22 @@ def load_config(path: Path | str | None = None) -> RuntimeConfig:
         ),
         time_policy=TimePolicy(timezone=timezone, assumed_year=year),
         flag_prefixes=tuple(prefixes),
+        decode_max_depth=int(
+            _positive(patterns.get("decode_max_depth", 2), "decode_max_depth", int)
+        ),
+        decode_max_output_chars=int(
+            _positive(
+                patterns.get("decode_max_output_chars", 4_096),
+                "decode_max_output_chars",
+                int,
+            )
+        ),
+        decode_max_candidates=int(
+            _positive(
+                patterns.get("decode_max_candidates", 20),
+                "decode_max_candidates",
+                int,
+            )
+        ),
         source_path=config_path.resolve(),
     )

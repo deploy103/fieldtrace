@@ -7,6 +7,7 @@ import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from fieldtrace.core.models import AnalysisContext, Diagnostic, EvidenceRef, Progress
@@ -26,7 +27,7 @@ _DOMAIN_RE = re.compile(
     r"(?<![\w.-])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
     r"[A-Za-z]{2,63}(?![\w.-])"
 )
-_FLAG_RE = re.compile(r"(?i)(?:flag|ctf)\{[^\r\n{}]{1,512}\}")
+_DEFAULT_FLAG_PREFIXES = ("FLAG", "flag", "CTF", "ctf")
 _QUOTED_RE = re.compile(r"""(?P<quote>["'])(?P<value>[^"'\r\n]{4,256})(?P=quote)""")
 
 
@@ -279,8 +280,17 @@ def extract_domains(text: str) -> list[str]:
     return list(dict.fromkeys(match.casefold() for match in _DOMAIN_RE.findall(text)))
 
 
-def extract_flags(text: str) -> list[str]:
-    return list(dict.fromkeys(_FLAG_RE.findall(text)))
+@lru_cache(maxsize=32)
+def _flag_pattern(prefixes: tuple[str, ...]) -> re.Pattern[str]:
+    ordered = sorted(set(prefixes), key=len, reverse=True)
+    alternatives = "|".join(re.escape(prefix) for prefix in ordered)
+    return re.compile(rf"(?:{alternatives})\{{[^\r\n{{}}]{{1,512}}\}}", re.IGNORECASE)
+
+
+def extract_flags(text: str, prefixes: tuple[str, ...] = _DEFAULT_FLAG_PREFIXES) -> list[str]:
+    if not prefixes:
+        return []
+    return list(dict.fromkeys(_flag_pattern(prefixes).findall(text)))
 
 
 def extract_literals(text: str) -> list[str]:

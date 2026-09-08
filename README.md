@@ -4,14 +4,15 @@ FieldTrace는 CTF 대회장에서 받은 패킷과 로그를 완전 오프라인
 한국어 CLI입니다. 파일을 번호로 고르고 추천 분석을 실행한 뒤, 후보의 원문과
 줄·패킷 위치까지 돌아가는 흐름을 우선합니다.
 
-현재 Phase 1은 일반 텍스트, Apache/Nginx Common·Combined 로그, 대표
-OpenSSH·sudo 로그와 TShark 기반 PCAP/PCAPNG 요약을 지원합니다. EVTX,
-TCP 스트림 재조립·객체 추출, HTML 보고서는 후속 단계입니다.
+현재 일반 텍스트, Apache/Nginx Common·Combined 로그, 대표 OpenSSH·sudo,
+Windows EVTX/Sysmon과 TShark 기반 PCAP/PCAPNG를 지원합니다. 설정 가능한 플래그
+접두사와 제한 디코딩, 네트워크 검토 후보, 교차 자료 관측, TCP 대화 보기,
+HTTP 본문 추출과 오프라인 HTML 보고서도 사용할 수 있습니다.
 
 ## 지원 환경
 
 - Ubuntu 24.04 또는 WSL2 Ubuntu, Python 3.12
-- 준비 단계의 `uv`; 패킷 분석에는 `tshark`
+- 준비 단계의 `uv`; 패킷 분석에는 `tshark`, EVTX 분석에는 잠금된 `python-evtx`
 - 분석 실행 중 인터넷, DNS 조회, AI API, 자동 업데이트를 사용하지 않음
 
 Windows 네이티브와 macOS는 초기 지원 범위가 아닙니다. Kali는 아직 별도
@@ -59,7 +60,10 @@ FieldTrace는 실시간 캡처 권한이 필요하지 않습니다. 설치 질�
 ./run.sh analyze './input/레거시 로그.txt' --encoding cp949 --case ./cases/demo
 ./run.sh search --case ./cases/demo --text 'example.test'
 ./run.sh timeline --case ./cases/demo
-./run.sh report --case ./cases/demo --format markdown
+./run.sh correlate --case ./cases/demo
+./run.sh report --case ./cases/demo --format html
+./run.sh analyze capture.pcapng --profile custom \
+  --tasks tcp_streams,object_extraction --case ./cases/packet-detail
 ```
 
 `quick`은 30초 또는 100,000레코드 예산 안에서 먼저 결과를 보여주고, 예산에
@@ -68,10 +72,16 @@ FieldTrace는 실시간 캡처 권한이 필요하지 않습니다. 설치 질�
 지정합니다. 자동 UTF 감지가 실패한 텍스트는 메뉴 또는 `--encoding`에서 검토된
 인코딩(UTF-8/UTF-16/CP949/EUC-KR)을 선택할 수 있습니다.
 
-보고서는 Markdown, JSON, CSV를 지원합니다. HTML은 Phase 2 범위이며 현재 명확한
-준비 중 오류를 반환합니다. 입력 원본은 열어 읽기만 하며 결과는
-기본적으로 `cases/<시각>-<짧은ID>/`의 DB, `reports/`, `derived/`,
-`diagnostics/`에 저장됩니다.
+플래그 접두사와 Base64/Hex/URL 디코딩 한계는 `configs/default.toml`의
+`[patterns]`에서 바꿀 수 있습니다. 기본 디코딩 깊이는 2, 입력 전체 후보는 20개,
+후보당 출력은 4096자입니다. `correlate`는 여러 source에서 함께 관측된 IP·도메인·
+계정·파일명을 보여주지만 동일 문자열만으로 인과관계를 주장하지 않습니다.
+
+보고서는 Markdown, JSON, CSV, 외부 CDN 없는 HTML을 지원합니다. HTML의 모든
+동적 값과 원문은 escape되며 브라우저 안에서 결과를 검색할 수 있습니다. 입력
+원본은 열어 읽기만 하며 결과는 기본적으로 `cases/<시각>-<짧은ID>/`의 DB,
+`reports/`, `derived/`, `diagnostics/`에 저장됩니다. HTTP 추출물은 `derived/run-N/`
+아래에 저장하고 SHA-256과 원본 frame을 기록하며 절대 자동 실행하지 않습니다.
 
 ## 오프라인 반입 준비
 
