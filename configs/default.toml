@@ -1,0 +1,20 @@
+[analysis]
+quick_seconds = 30
+quick_records = 100000
+batch_size = 250
+max_line_bytes = 1048576
+max_preview_chars = 500
+command_timeout_seconds = 120
+command_output_bytes = 8388608
+
+[paths]
+input = "input"
+cases = "cases"
+
+[time]
+default_timezone = ""
+default_year = 0
+
+[patterns]
+flag_prefixes = ["FLAG", "flag", "CTF", "ctf"]
+

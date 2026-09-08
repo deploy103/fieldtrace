@@ -19,12 +19,12 @@ build/
 *.key
 
 # FieldTrace evidence and generated output
-input/*
-!input/.gitkeep
-cases/
-reports/
-derived/
-diagnostics/
+/input/*
+!/input/.gitkeep
+/cases/
+/reports/
+/derived/
+/diagnostics/
 *.sqlite
 *.sqlite3
 *.db
@@ -38,4 +38,3 @@ wheelhouse/
 .vscode/
 .DS_Store
 Thumbs.db
-

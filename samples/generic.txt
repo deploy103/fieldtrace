@@ -1,0 +1,4 @@
+FieldTrace synthetic evidence only
+client=192.0.2.10 contacted challenge.example.test
+candidate FLAG{offline_evidence_42}
+
