@@ -14,4 +14,3 @@
 
 실제 TShark 통합 테스트는 TShark가 없으면 skip된다. 별도의 mock 테스트는 설치
 여부와 무관하게 argv의 `-n -r`, DNS 필드와 frame 근거를 검증한다.
-

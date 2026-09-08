@@ -56,12 +56,20 @@ FieldTrace는 실시간 캡처 권한이 필요하지 않습니다. 설치 질�
 ```bash
 ./run.sh analyze ./input --profile quick --case ./cases/demo
 ./run.sh analyze './input/access log' --type web --case ./cases/demo
+./run.sh analyze './input/레거시 로그.txt' --encoding cp949 --case ./cases/demo
 ./run.sh search --case ./cases/demo --text 'example.test'
 ./run.sh timeline --case ./cases/demo
 ./run.sh report --case ./cases/demo --format markdown
 ```
 
-보고서는 Markdown, JSON, CSV를 지원합니다. 입력 원본은 열어 읽기만 하며 결과는
+`quick`은 30초 또는 100,000레코드 예산 안에서 먼저 결과를 보여주고, 예산에
+도달하면 정상 종료하되 `부분 분석`으로 기록합니다. `full`은 구현되어 있고 사용할
+수 있는 기본 분석을 모두 실행합니다. `custom`은 `--tasks`에 쉼표로 분석 항목을
+지정합니다. 자동 UTF 감지가 실패한 텍스트는 메뉴 또는 `--encoding`에서 검토된
+인코딩(UTF-8/UTF-16/CP949/EUC-KR)을 선택할 수 있습니다.
+
+보고서는 Markdown, JSON, CSV를 지원합니다. HTML은 Phase 2 범위이며 현재 명확한
+준비 중 오류를 반환합니다. 입력 원본은 열어 읽기만 하며 결과는
 기본적으로 `cases/<시각>-<짧은ID>/`의 DB, `reports/`, `derived/`,
 `diagnostics/`에 저장됩니다.
 
@@ -101,4 +109,3 @@ uv run ruff check .
 실제 TShark 통합 검증은 `tshark`가 설치된 환경에서만 성공으로 간주합니다.
 자세한 구조는 `docs/ARCHITECTURE.md`, 현장 흐름은 `docs/FIELD_GUIDE.md`,
 현재 구현과 알려진 한계는 `docs/HANDOFF.md`를 참고하세요.
-
