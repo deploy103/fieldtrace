@@ -16,6 +16,7 @@ from fieldtrace.ui.menus import (
     choose_one,
     choose_result_action,
     choose_source_format,
+    choose_text_encoding,
 )
 from fieldtrace.ui.presentation import (
     analysis_progress,
@@ -37,13 +38,13 @@ from fieldtrace.ui.safety import (
 
 __all__ = [
     "ANALYSIS_TASKS",
+    "RESULT_ACTIONS",
     "DetectionView",
     "FileChoice",
     "MenuController",
     "MenuOption",
     "MenuResult",
     "MenuStatus",
-    "RESULT_ACTIONS",
     "ResultView",
     "TaskOption",
     "analysis_progress",
@@ -54,6 +55,7 @@ __all__ = [
     "choose_one",
     "choose_result_action",
     "choose_source_format",
+    "choose_text_encoding",
     "is_wsl",
     "normalize_pasted_path",
     "render_candidates",

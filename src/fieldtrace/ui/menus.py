@@ -10,7 +10,6 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Generic, TypeVar
 
 from rich.console import Console
 from rich.table import Table
@@ -18,7 +17,6 @@ from rich.text import Text
 
 from fieldtrace.ui.safety import normalize_pasted_path, strip_terminal_controls
 
-T = TypeVar("T")
 type InputFunction = Callable[[str], str]
 
 
@@ -29,13 +27,13 @@ class MenuStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class MenuResult(Generic[T]):
+class MenuResult[T]:
     status: MenuStatus
     value: T | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class MenuOption(Generic[T]):
+class MenuOption[T]:
     label: str
     value: T
     description: str = ""
@@ -84,7 +82,7 @@ def _read(input_fn: InputFunction, prompt: str) -> str | None:
         return None
 
 
-def choose_one(
+def choose_one[T](
     title: str,
     options: Sequence[MenuOption[T]],
     *,
@@ -120,9 +118,8 @@ def choose_one(
             option = options[int(raw) - 1]
             if option.available:
                 return MenuResult(MenuStatus.SELECTED, option.value)
-            console.print(
-                Text(f"현재 사용할 수 없습니다: {strip_terminal_controls(option.unavailable_reason)}")
-            )
+            reason = strip_terminal_controls(option.unavailable_reason)
+            console.print(Text(f"현재 사용할 수 없습니다: {reason}"))
             continue
         console.print("표시된 번호, 0, q 중 하나를 입력하세요.", markup=False)
 
@@ -237,7 +234,36 @@ def choose_source_format(
         MenuOption("PCAP/PCAPNG 패킷", "pcap"),
     )
     default = next((i for i, option in enumerate(options, 1) if option.value == detected), None)
-    return choose_one("파일 형식 직접 선택", options, default=default, input_fn=input_fn, console=console)
+    return choose_one(
+        "파일 형식 직접 선택",
+        options,
+        default=default,
+        input_fn=input_fn,
+        console=console,
+    )
+
+
+def choose_text_encoding(
+    *,
+    input_fn: InputFunction = input,
+    console: Console | None = None,
+) -> MenuResult[str]:
+    """Choose a reviewed fallback after automatic UTF detection fails."""
+
+    options = (
+        MenuOption("CP949 (Windows 한국어)", "cp949", "추천"),
+        MenuOption("EUC-KR", "euc-kr"),
+        MenuOption("UTF-8", "utf-8"),
+        MenuOption("UTF-16 little-endian", "utf-16-le"),
+        MenuOption("UTF-16 big-endian", "utf-16-be"),
+    )
+    return choose_one(
+        "텍스트 인코딩 직접 선택",
+        options,
+        default=1,
+        input_fn=input_fn,
+        console=console,
+    )
 
 
 def choose_result_action(
@@ -262,7 +288,11 @@ def choose_result_action(
 def _regular_files(directory: Path) -> list[Path]:
     try:
         return sorted(
-            (entry for entry in directory.iterdir() if entry.is_file()),
+            (
+                entry
+                for entry in directory.iterdir()
+                if entry.is_file() and entry.name != ".gitkeep"
+            ),
             key=lambda entry: entry.name.casefold(),
         )
     except OSError:
