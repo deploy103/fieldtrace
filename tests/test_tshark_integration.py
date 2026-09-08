@@ -23,9 +23,7 @@ def test_real_tshark_packet_fixtures(tmp_path: Path) -> None:
     dns_bundle = service.report_bundle(dns_case)
 
     assert not dns_summary.partial
-    dns = next(
-        event for event in dns_bundle["events"] if event["category"] == "network.dns_query"
-    )
+    dns = next(event for event in dns_bundle["events"] if event["category"] == "network.dns_query")
     assert dns["fields"]["query"] == "challenge.example.test"
     assert dns["evidence_locator"] == "frame:1"
     assert dns_hits
@@ -41,9 +39,7 @@ def test_real_tshark_packet_fixtures(tmp_path: Path) -> None:
 
     assert not http_summary.partial
     http = next(
-        event
-        for event in http_bundle["events"]
-        if event["category"] == "network.http_request"
+        event for event in http_bundle["events"] if event["category"] == "network.http_request"
     )
     assert http["src_ip"] == "192.0.2.10"
     assert http["src_port"] == 49152
@@ -55,3 +51,19 @@ def test_real_tshark_packet_fixtures(tmp_path: Path) -> None:
     assert http["fields"]["uri_decoded"] == "/FLAG{pcapng_http}"
     assert http["evidence_locator"] == "frame:1"
     assert http_hits
+
+    stream_case = tmp_path / "stream-case"
+    stream_summary = service.analyze(
+        http_pcapng,
+        case_dir=stream_case,
+        profile="custom",
+        selected_tasks=("tcp_streams",),
+    )
+    stream_bundle = service.report_bundle(stream_case)
+    stream = next(
+        event for event in stream_bundle["events"] if event["category"] == "network.tcp_stream"
+    )
+    assert not stream_summary.partial
+    assert stream["evidence_locator"] == "tcp.stream:0"
+    assert stream["fields"]["reassembly_engine"] == "tshark follow,tcp,ascii"
+    assert "GET /FLAG%7Bpcapng_http%7D HTTP/1.1" in stream["fields"]["stream_preview"]

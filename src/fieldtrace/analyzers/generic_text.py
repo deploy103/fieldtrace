@@ -22,6 +22,7 @@ from fieldtrace.analyzers._common import (
     select_text_encoding,
     text_encoding,
 )
+from fieldtrace.analyzers.decoding import DecodeTracker, decoded_items
 from fieldtrace.core.models import (
     AnalysisContext,
     AnalysisItem,
@@ -95,6 +96,7 @@ class GenericTextAnalyzer:
         counts: Counter[str] = Counter()
         processed = 0
         emitted = 0
+        decode_tracker = DecodeTracker()
         scan_network = requested(
             context, "network_summary", "ip_domain", "network", "domains", "ips"
         )
@@ -142,7 +144,7 @@ class GenericTextAnalyzer:
                         fields={"value": value, "indicator_type": "domain"},
                     )
             if scan_flags:
-                line_flags = extract_flags(item.text)
+                line_flags = extract_flags(item.text, context.flag_prefixes)
                 line_literals = extract_literals(item.text)
                 for value in line_flags:
                     counts["flag"] += 1
@@ -168,6 +170,13 @@ class GenericTextAnalyzer:
                         evidence=evidence,
                         fields={"value": value, "indicator_type": "literal"},
                     )
+                yield from decoded_items(
+                    context,
+                    item.text,
+                    evidence,
+                    rule_prefix="text",
+                    tracker=decode_tracker,
+                )
             # Keeping every bounded line makes the case-wide literal search useful
             # even when no pre-defined indicator pattern matches it.
             yield Event(

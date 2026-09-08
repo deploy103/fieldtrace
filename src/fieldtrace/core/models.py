@@ -16,6 +16,7 @@ class SourceFormat(StrEnum):
     WEB = "web"
     LINUX_AUTH = "linux_auth"
     PCAP = "pcap"
+    EVTX = "evtx"
     UNKNOWN = "unknown"
 
 
@@ -121,6 +122,7 @@ class ProbeResult:
 class Environment:
     tshark_path: str | None = None
     tshark_version: str | None = None
+    python_evtx_version: str | None = None
 
 
 @dataclass(slots=True)
@@ -156,6 +158,18 @@ class ExternalRunner(Protocol):
     ) -> tuple[int, str, str]: ...
 
 
+class ArtifactSink(Protocol):
+    def write_bytes(
+        self,
+        suggested_name: str,
+        data: bytes,
+        *,
+        kind: str,
+        analyzer: str,
+        evidence: EvidenceRef,
+    ) -> Artifact: ...
+
+
 @dataclass(slots=True)
 class AnalysisContext:
     input_path: Path
@@ -170,6 +184,11 @@ class AnalysisContext:
     started_at: float
     selected_tasks: frozenset[str] = frozenset()
     text_encoding: str | None = None
+    flag_prefixes: tuple[str, ...] = ("FLAG", "flag", "CTF", "ctf")
+    decode_max_depth: int = 2
+    decode_max_output_chars: int = 4_096
+    decode_max_candidates: int = 20
+    artifact_sink: ArtifactSink | None = None
 
 
 class Analyzer(Protocol):

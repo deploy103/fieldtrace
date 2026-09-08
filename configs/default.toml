@@ -17,4 +17,6 @@ default_year = 0
 
 [patterns]
 flag_prefixes = ["FLAG", "flag", "CTF", "ctf"]
-
+decode_max_depth = 2
+decode_max_output_chars = 4096
+decode_max_candidates = 20

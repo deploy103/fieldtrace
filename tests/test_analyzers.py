@@ -153,6 +153,7 @@ class TSharkFixtureRunner:
                 "1788830000.125",
                 "DNS",
                 "eth:ethertype:ip:udp:dns",
+                "",
                 "192.0.2.10",
                 "",
                 "198.51.100.53",
@@ -188,3 +189,73 @@ def test_pcap_mock_dns_and_frame_evidence(tmp_path: Path, make_context) -> None:
         item for item in items if isinstance(item, Finding) and item.rule_id == "pcap.summary"
     )
     assert summary.fields["packets"] == 1
+
+
+class FrequentDnsRunner:
+    def run(self, _argv: list[str], **_kwargs: object) -> tuple[int, str, str]:
+        stream = io.StringIO()
+        writer = csv.writer(stream, delimiter="\t", quotechar='"', lineterminator="\n")
+        query = f"{'a' * 55}.challenge.example.test"
+        for frame in range(1, 21):
+            writer.writerow(
+                [
+                    str(frame),
+                    str(1788830000 + frame),
+                    "DNS",
+                    "eth:ip:udp:dns",
+                    "",
+                    "192.0.2.10",
+                    "",
+                    "198.51.100.53",
+                    "",
+                    "",
+                    "53000",
+                    "",
+                    "53",
+                    query,
+                    "",
+                    "",
+                    "",
+                ]
+            )
+        return 0, stream.getvalue(), ""
+
+
+def test_pcap_dns_length_and_frequency_are_candidates_with_evidence(
+    tmp_path: Path, make_context
+) -> None:
+    path = tmp_path / "dns.pcap"
+    path.write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 20)
+    analyzer = PcapAnalyzer()
+    analyzer.capabilities(Environment("/usr/bin/tshark", "TShark synthetic"))
+
+    findings = [
+        item
+        for item in analyzer.analyze(make_context(path, runner=FrequentDnsRunner()))
+        if isinstance(item, Finding)
+    ]
+
+    long_query = next(item for item in findings if item.rule_id == "pcap.dns_long_query_candidate")
+    frequent = next(item for item in findings if item.rule_id == "pcap.dns_frequency_candidate")
+    assert long_query.evidence is not None and long_query.evidence.locator == "frame:1"
+    assert frequent.fields["count"] == 20
+    assert "확정하지 않습니다" in frequent.interpretation
+
+
+def test_web_suspicious_request_rule_remains_a_candidate(tmp_path: Path, make_context) -> None:
+    path = tmp_path / "access.log"
+    path.write_text(
+        "192.0.2.10 - - [08/Sep/2026:14:12:30 +0900] "
+        '"GET /download?file=../../etc/passwd HTTP/1.1" 200 20\n',
+        encoding="utf-8",
+    )
+
+    finding = next(
+        item
+        for item in WebLogAnalyzer().analyze(make_context(path))
+        if isinstance(item, Finding) and item.rule_id == "web.http_request_candidate"
+    )
+
+    assert finding.evidence is not None and finding.evidence.locator == "line:1"
+    assert "상위 경로 이동 표현" in finding.fields["reasons"]
+    assert "확정하지 않습니다" in finding.interpretation

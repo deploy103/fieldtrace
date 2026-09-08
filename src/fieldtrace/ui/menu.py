@@ -47,6 +47,7 @@ class ResultView:
     summary: AnalysisSummary | Mapping[str, Any]
     findings: tuple[Finding | Mapping[str, Any], ...] = ()
     diagnostics: tuple[Diagnostic | Mapping[str, Any], ...] = ()
+    detail_available: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +102,10 @@ class MenuController(Protocol):
 
     def report(self, format: str) -> Path: ...
 
+    def detail_tasks(self) -> Sequence[TaskOption]: ...
+
+    def analyze_detail(self, selected_tasks: frozenset[str]) -> ResultView: ...
+
 
 def _as_mapping(value: object) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
@@ -119,6 +124,7 @@ def _result(value: ResultView | Mapping[str, Any] | object) -> ResultView:
         summary=data.get("summary", data),
         findings=tuple(data.get("findings", ()) or ()),
         diagnostics=tuple(data.get("diagnostics", ()) or ()),
+        detail_available=bool(data.get("detail_available", False)),
     )
 
 
@@ -216,7 +222,7 @@ def _result_loop(
             return MenuStatus.QUIT
     while True:
         action = choose_result_action(
-            detail_available=False,
+            detail_available=result.detail_available,
             input_fn=input_fn,
             console=console,
         )
@@ -271,10 +277,19 @@ def _result_loop(
                 if evidence_status is MenuStatus.QUIT:
                     return MenuStatus.QUIT
             elif action.value == "detail":
-                console.print(
-                    "상세 분석은 분석 항목 직접 선택에서 실행할 수 있습니다.",
-                    markup=False,
+                detail = choose_custom_tasks(
+                    controller.detail_tasks(), input_fn=input_fn, console=console
                 )
+                if detail.status is MenuStatus.QUIT:
+                    return MenuStatus.QUIT
+                if detail.status is MenuStatus.SELECTED and detail.value:
+                    result = _result(controller.analyze_detail(detail.value))
+                    render_result(
+                        result.summary,
+                        result.findings,
+                        result.diagnostics,
+                        console=console,
+                    )
             elif action.value == "report":
                 report_format = choose_one(
                     "보고서 형식",
@@ -282,6 +297,7 @@ def _result_loop(
                         MenuOption("Markdown", "markdown"),
                         MenuOption("JSON (원문 보존)", "json"),
                         MenuOption("CSV (스프레드시트 안전 표시용)", "csv"),
+                        MenuOption("HTML (오프라인 검색)", "html"),
                     ),
                     default=1,
                     input_fn=input_fn,
@@ -372,7 +388,7 @@ def run_menu(
                     getattr(detected, "encoding_required", False),
                 )
             )
-            if requires_encoding and manual.value != "pcap":
+            if requires_encoding and manual.value not in {"pcap", "evtx"}:
                 encoding = choose_text_encoding(input_fn=input_fn, console=console)
                 if encoding.status is MenuStatus.QUIT:
                     return 0

@@ -3,6 +3,7 @@
 from fieldtrace.ui.menu import DetectionView, MenuController, ResultView, run_menu
 from fieldtrace.ui.menus import (
     ANALYSIS_TASKS,
+    DETAIL_TASKS,
     RESULT_ACTIONS,
     FileChoice,
     MenuOption,
@@ -38,6 +39,7 @@ from fieldtrace.ui.safety import (
 
 __all__ = [
     "ANALYSIS_TASKS",
+    "DETAIL_TASKS",
     "RESULT_ACTIONS",
     "DetectionView",
     "FileChoice",

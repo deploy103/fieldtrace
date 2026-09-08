@@ -8,7 +8,7 @@ from fieldtrace.core.db import CaseStore
 from fieldtrace.core.detector import FormatDetector
 from fieldtrace.core.hashing import HashJob
 from fieldtrace.core.models import Coverage, Event, EvidenceRef, Finding, RunStatus, SourceFormat
-from fieldtrace.core.search import evidence_detail, literal_search, timeline
+from fieldtrace.core.search import correlations, evidence_detail, literal_search, timeline
 
 
 def test_content_detection_ignores_misleading_extensions(tmp_path: Path) -> None:
@@ -137,16 +137,12 @@ def test_like_fallback_escapes_wildcards(tmp_path: Path) -> None:
                 Event(
                     category="literal",
                     summary="marker 100%_done",
-                    evidence=EvidenceRef(
-                        source_id, "text_line", "line:1", "marker 100%_done"
-                    ),
+                    evidence=EvidenceRef(source_id, "text_line", "line:1", "marker 100%_done"),
                 ),
                 Event(
                     category="decoy",
                     summary="marker 100XXdone",
-                    evidence=EvidenceRef(
-                        source_id, "text_line", "line:2", "marker 100XXdone"
-                    ),
+                    evidence=EvidenceRef(source_id, "text_line", "line:2", "marker 100XXdone"),
                 ),
             ],
         )
@@ -211,3 +207,63 @@ def test_stale_hash_generation_cannot_overwrite_new_result(tmp_path: Path) -> No
     assert current_applied is True
     assert row is not None
     assert tuple(row) == ("new-digest", "complete", "new-generation")
+
+
+def test_cross_source_correlations_group_explicit_entities_without_claiming_cause(
+    tmp_path: Path,
+) -> None:
+    with CaseStore(tmp_path / "case") as store:
+        for index, fields in enumerate(
+            (
+                {
+                    "query": "shared.example.test",
+                    "Image": r"C:\Tools\runner.exe",
+                },
+                {
+                    "host": "shared.example.test",
+                    "NewProcessName": "/opt/tools/runner.exe",
+                },
+            ),
+            1,
+        ):
+            path = tmp_path / f"source-{index}.log"
+            path.write_text("evidence", encoding="utf-8")
+            stat = path.stat()
+            source_id = store.add_source(
+                path,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                detected_format="text",
+                detection_reason="test",
+            )
+            run_id = store.create_run(source_id, "full")
+            store.write_items(
+                run_id,
+                [
+                    Event(
+                        category="test.entity",
+                        summary=f"source {index}",
+                        evidence=EvidenceRef(source_id, "text_line", f"line:{index}", "raw"),
+                        src_ip="192.0.2.40" if index == 1 else None,
+                        dst_ip="192.0.2.40" if index == 2 else None,
+                        user="Analyst",
+                        fields=fields,
+                    )
+                ],
+            )
+            store.finish_run(
+                run_id,
+                status=RunStatus.COMPLETED,
+                coverage=Coverage.COMPLETE,
+                records_read=1,
+                failures=0,
+            )
+
+        entries = correlations(store)
+
+    keyed = {(entry.kind, entry.value.casefold()): entry for entry in entries}
+    assert keyed[("ip", "192.0.2.40")].source_ids == (1, 2)
+    assert keyed[("domain", "shared.example.test")].occurrences == 2
+    assert keyed[("account", "analyst")].occurrences == 2
+    assert keyed[("filename", "runner.exe")].occurrences == 2
+    assert all("인과관계" in entry.interpretation for entry in entries)

@@ -1,4 +1,4 @@
-"""Offline Markdown, JSON, and display-CSV exporters."""
+"""Offline Markdown, JSON, CSV, and escaped HTML exporters."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
+from fieldtrace.reports.html_report import export_html
 from fieldtrace.reports.models import ReportBundle, to_plain
 
-type ReportFormat = Literal["markdown", "md", "json", "csv"]
+type ReportFormat = Literal["markdown", "md", "json", "csv", "html"]
 _FORMULA_PREFIX = re.compile(r"^[\s\x00-\x1f]*[=+\-@]")
 
 
@@ -198,6 +199,44 @@ def export_markdown(bundle: ReportBundle | Mapping[str, Any], output: Path) -> P
             )
     else:
         lines.append("기록 없음")
+    lines.extend(("", "## 교차 자료 관측", ""))
+    if report.correlations:
+        lines.extend(
+            _table(
+                ("종류", "값", "Source IDs", "관측 수", "해석"),
+                (
+                    (
+                        item.get("kind", ""),
+                        item.get("value", ""),
+                        item.get("source_ids", ""),
+                        item.get("occurrences", ""),
+                        item.get("interpretation", ""),
+                    )
+                    for item in report.correlations
+                ),
+            )
+        )
+    else:
+        lines.append("여러 입력에서 함께 관측된 명시적 식별자 없음")
+    lines.extend(("", "## 파생 파일", ""))
+    if report.artifacts:
+        lines.extend(
+            _table(
+                ("경로", "종류", "SHA-256", "분석기", "원본 근거"),
+                (
+                    (
+                        item.get("path", ""),
+                        item.get("kind", ""),
+                        item.get("sha256", ""),
+                        item.get("analyzer", ""),
+                        _evidence(item).get("locator", ""),
+                    )
+                    for item in report.artifacts
+                ),
+            )
+        )
+    else:
+        lines.append("기록 없음")
     lines.extend(("", "## 실패·생략·진단", ""))
     if report.diagnostics:
         lines.extend(
@@ -271,6 +310,7 @@ def export_csv(bundle: ReportBundle | Mapping[str, Any], output: Path) -> Path:
         ("finding", report.findings),
         ("diagnostic", report.diagnostics),
         ("artifact", report.artifacts),
+        ("correlation", report.correlations),
     )
     with output.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=_CSV_COLUMNS)
@@ -287,7 +327,7 @@ def export_csv(bundle: ReportBundle | Mapping[str, Any], output: Path) -> Path:
 def export_report(
     bundle: ReportBundle | Mapping[str, Any], output: Path, format: ReportFormat
 ) -> Path:
-    """Export one scoped report in the requested Phase-1 format."""
+    """Export one scoped report in the requested offline format."""
 
     normalized = format.casefold()
     if normalized in {"markdown", "md"}:
@@ -296,4 +336,6 @@ def export_report(
         return export_json(bundle, output)
     if normalized == "csv":
         return export_csv(bundle, output)
+    if normalized == "html":
+        return export_html(bundle, output)
     raise ValueError(f"지원하지 않는 보고서 형식: {format}")
