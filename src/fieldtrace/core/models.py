@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from threading import Event as ThreadEvent
-from typing import Any, Protocol, TypeAlias
+from typing import Any, Protocol
 
 
 class SourceFormat(StrEnum):
@@ -99,7 +99,7 @@ class Diagnostic:
     exception: str | None = None
 
 
-AnalysisItem: TypeAlias = Event | Finding | Artifact | Progress | Diagnostic
+type AnalysisItem = Event | Finding | Artifact | Progress | Diagnostic
 
 
 @dataclass(slots=True)
@@ -169,6 +169,7 @@ class AnalysisContext:
     profile: str
     started_at: float
     selected_tasks: frozenset[str] = frozenset()
+    text_encoding: str | None = None
 
 
 class Analyzer(Protocol):
@@ -223,4 +224,4 @@ class AnalysisSummary:
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
