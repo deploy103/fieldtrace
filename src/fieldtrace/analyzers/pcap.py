@@ -45,7 +45,7 @@ _OUTPUT_LIMIT_MARKER = "[FieldTrace: 출력 제한으로 나머지 생략]"
 _FIELDS = (
     "frame.number",
     "frame.time_epoch",
-    "_ws.col.Protocol",
+    "_ws.col.protocol",
     "frame.protocols",
     "ip.src",
     "ipv6.src",
@@ -275,7 +275,7 @@ class PcapAnalyzer:
             dst_ip = _first(values["ip.dst"], values["ipv6.dst"])
             src_port = _integer(_first(values["tcp.srcport"], values["udp.srcport"]))
             dst_port = _integer(_first(values["tcp.dstport"], values["udp.dstport"]))
-            protocol = values["_ws.col.Protocol"] or values["frame.protocols"].rsplit(":", 1)[-1]
+            protocol = values["_ws.col.protocol"] or values["frame.protocols"].rsplit(":", 1)[-1]
             protocol = protocol or "UNKNOWN"
             protocols = [part for part in values["frame.protocols"].split(":") if part]
             protocol_counts[protocol] += 1

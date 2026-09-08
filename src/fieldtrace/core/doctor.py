@@ -40,6 +40,7 @@ class DoctorResult:
 _TSHARK_FIELDS = (
     "frame.number",
     "frame.time_epoch",
+    "frame.protocols",
     "ip.src",
     "ip.dst",
     "ipv6.src",
@@ -50,8 +51,9 @@ _TSHARK_FIELDS = (
     "udp.dstport",
     "dns.qry.name",
     "http.request.method",
+    "http.host",
     "http.request.uri",
-    "_ws.col.Protocol",
+    "_ws.col.protocol",
 )
 
 
