@@ -93,7 +93,10 @@ def render_candidates(
         )
     console.print(table)
     if not findings:
-        console.print("표시할 후보가 없습니다. 검색이나 시간순 보기를 사용할 수 있습니다.", markup=False)
+        console.print(
+            "표시할 후보가 없습니다. 검색이나 시간순 보기를 사용할 수 있습니다.",
+            markup=False,
+        )
 
 
 def render_evidence(

@@ -10,7 +10,7 @@ from pathlib import Path
 from rich.markup import escape
 
 _WINDOWS_DRIVE_PATH = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
-_QUOTE_PAIRS = {"'": "'", '"': '"', "‘": "’", "“": "”"}
+_QUOTE_PAIRS = {"'": "'", '"': '"', "\u2018": "\u2019", "\u201c": "\u201d"}
 
 
 def strip_paired_quotes(value: str) -> str:
@@ -32,9 +32,7 @@ def is_wsl() -> bool:
     if os.environ.get("WSL_INTEROP") or os.environ.get("WSL_DISTRO_NAME"):
         return True
     try:
-        release = Path("/proc/sys/kernel/osrelease").read_text(
-            encoding="utf-8", errors="replace"
-        )
+        release = Path("/proc/sys/kernel/osrelease").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
     return "microsoft" in release.casefold() or "wsl" in release.casefold()

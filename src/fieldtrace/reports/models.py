@@ -108,9 +108,7 @@ class ReportBundle:
                     source["id"] for source in plain_sources if source.get("id") is not None
                 ],
                 "latest_only": (
-                    plain_case.get("latest_only", True)
-                    if isinstance(plain_case, Mapping)
-                    else True
+                    plain_case.get("latest_only", True) if isinstance(plain_case, Mapping) else True
                 ),
             }
         return cls.build(

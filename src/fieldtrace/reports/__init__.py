@@ -1,5 +1,4 @@
 """Offline report exporters."""
-"""Offline report exporters."""
 
 from fieldtrace.reports.exporters import (
     ReportFormat,

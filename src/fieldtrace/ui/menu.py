@@ -8,7 +8,7 @@ an analyzer itself.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -30,6 +30,7 @@ from fieldtrace.ui.menus import (
     choose_one,
     choose_result_action,
     choose_source_format,
+    choose_text_encoding,
 )
 from fieldtrace.ui.presentation import (
     render_error,
@@ -55,6 +56,7 @@ class DetectionView:
     confidence: float = 0.0
     available: bool = True
     manual_selection_recommended: bool = False
+    encoding_required: bool = False
 
 
 class MenuController(Protocol):
@@ -86,6 +88,7 @@ class MenuController(Protocol):
         profile: str,
         selected_tasks: frozenset[str],
         manual_formats: Mapping[Path, str],
+        manual_encodings: Mapping[Path, str],
     ) -> ResultView: ...
 
     def open_results(self, paths: Sequence[Path]) -> ResultView: ...
@@ -150,7 +153,12 @@ def _choose_item_evidence(
     try:
         evidence = controller.evidence(chosen.value)
     except Exception as error:
-        render_error("원문 근거 조회", error, "다른 후보를 선택하거나 진단을 확인하세요.", console=console)
+        render_error(
+            "원문 근거 조회",
+            error,
+            "다른 후보를 선택하거나 진단을 확인하세요.",
+            console=console,
+        )
         return MenuStatus.BACK
     if evidence is None:
         console.print("연결된 원문 근거가 없습니다.", markup=False)
@@ -207,7 +215,11 @@ def _result_loop(
         if candidate_status is MenuStatus.QUIT:
             return MenuStatus.QUIT
     while True:
-        action = choose_result_action(input_fn=input_fn, console=console)
+        action = choose_result_action(
+            detail_available=False,
+            input_fn=input_fn,
+            console=console,
+        )
         if action.status is MenuStatus.QUIT or action.value == "quit":
             return MenuStatus.QUIT
         if action.status is MenuStatus.BACK:
@@ -259,7 +271,10 @@ def _result_loop(
                 if evidence_status is MenuStatus.QUIT:
                     return MenuStatus.QUIT
             elif action.value == "detail":
-                console.print("상세 분석은 분석 항목 직접 선택에서 실행할 수 있습니다.", markup=False)
+                console.print(
+                    "상세 분석은 분석 항목 직접 선택에서 실행할 수 있습니다.",
+                    markup=False,
+                )
             elif action.value == "report":
                 report_format = choose_one(
                     "보고서 형식",
@@ -311,9 +326,15 @@ def run_menu(
         try:
             detections = controller.detect(paths)
         except Exception as error:
-            render_error("파일 형식 감지", error, "수동 형식을 선택해 계속할 수 있습니다.", console=console)
+            render_error(
+                "파일 형식 감지",
+                error,
+                "수동 형식을 선택해 계속할 수 있습니다.",
+                console=console,
+            )
             detections = {}
         manual_formats: dict[Path, str] = {}
+        manual_encodings: dict[Path, str] = {}
         abandoned = False
         for path in paths:
             detected = detections.get(path) or detections.get(str(path))  # type: ignore[arg-type]
@@ -345,6 +366,20 @@ def run_menu(
                 abandoned = True
                 break
             manual_formats[path] = manual.value
+            requires_encoding = bool(
+                detected_data.get(
+                    "encoding_required",
+                    getattr(detected, "encoding_required", False),
+                )
+            )
+            if requires_encoding and manual.value != "pcap":
+                encoding = choose_text_encoding(input_fn=input_fn, console=console)
+                if encoding.status is MenuStatus.QUIT:
+                    return 0
+                if encoding.status is MenuStatus.BACK or encoding.value is None:
+                    abandoned = True
+                    break
+                manual_encodings[path] = encoding.value
         if abandoned:
             continue
         effective_detections = dict(detections)
@@ -390,6 +425,7 @@ def run_menu(
                         profile=mode.value,
                         selected_tasks=selected_tasks,
                         manual_formats=manual_formats,
+                        manual_encodings=manual_encodings,
                     )
                 )
         except KeyboardInterrupt:
@@ -397,10 +433,20 @@ def run_menu(
             try:
                 result = _result(controller.open_results(paths))
             except Exception as error:
-                render_error("부분 결과 열기", error, "다른 파일을 선택하거나 진단을 확인하세요.", console=console)
+                render_error(
+                    "부분 결과 열기",
+                    error,
+                    "다른 파일을 선택하거나 진단을 확인하세요.",
+                    console=console,
+                )
                 continue
         except Exception as error:
-            render_error("분석", error, "진단을 확인한 뒤 다른 파일 또는 형식으로 다시 시도하세요.", console=console)
+            render_error(
+                "분석",
+                error,
+                "진단을 확인한 뒤 다른 파일 또는 형식으로 다시 시도하세요.",
+                console=console,
+            )
             continue
         destination = _result_loop(controller, result, input_fn=input_fn, console=console)
         if destination is MenuStatus.QUIT:
