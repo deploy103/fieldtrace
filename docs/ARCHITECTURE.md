@@ -30,9 +30,19 @@ analyze(context) -> Iterator[AnalysisItem]
 `capabilities`는 외부 도구 부재를 예외 대신 사용 불가 사유로 돌려줍니다.
 
 `AnalysisContext`에는 입력 경로, source/run/case ID, 취소 이벤트, 시간대 정책,
-시간·레코드·줄 크기 예산, 안전한 외부 실행기, 프로필과 custom 항목이 있습니다.
+시간·레코드·줄 크기 예산, 안전한 외부 실행기, 프로필과 custom 항목, 플래그·
+디코딩 제한이 있습니다.
 분석기는 `Event`, `Finding`, `Artifact`, `Progress`, `Diagnostic`만 산출합니다.
 쓰기와 배치 커밋은 core 실행기가 담당합니다.
+
+Phase 2의 PCAP 객체 추출을 위해 `AnalysisContext.artifact_sink`를 선택 필드로
+추가했습니다. 분석기는 임의 출력 경로에 쓰지 않고 core의 `SafeArtifactSink`에
+이름·bytes·종류·분석기·EvidenceRef를 전달합니다. sink는 basename 정규화,
+개별 32 MiB 제한, 충돌 없는 파일명, SHA-256 계산을 맡습니다. 기존 분석기는
+기본값 `None`으로 그대로 동작하므로 호출자 마이그레이션은 필요 없습니다.
+메뉴 controller seam에는 상세 기능 목록과 실행을 위임하는 `detail_tasks()`와
+`analyze_detail()`이 추가됐습니다. UI는 여전히 subprocess나 파일 쓰기를 직접 하지
+않고 controller를 통해 core service를 호출합니다.
 
 새 분석기를 추가하려면 다음 순서로 작업합니다.
 
@@ -76,7 +86,7 @@ FieldTrace가 정한 필드만 TSV로 받습니다.
   JSON 세부 필드와 EvidenceRef
 - `findings`: 규칙 ID, 관측 사실, 제한적인 해석, severity와 별도 confidence,
   관련 근거
-- `artifacts`: 파생 경로·해시·종류·분석기·원본 근거
+- `artifacts`: core sink가 저장한 파생 경로·해시·종류·분석기·원본 근거
 - `diagnostics`: 실패 단계, 짧은 이유, 다음 행동과 진단 파일 참조
 
 가능하면 FTS5 색인을 쓰고, SQLite 빌드에 FTS5가 없으면 escape된 `LIKE` 검색으로
@@ -84,8 +94,25 @@ FieldTrace가 정한 필드만 TSV로 받습니다.
 사용해 재실행 중복을 피합니다. 같은 UTC 시각에서는 source와 event 순서로
 안정 정렬하고, UTC를 확정할 수 없는 이벤트는 시간 미상 영역에 둡니다.
 
-Phase 2에서 스키마가 바뀌면 버전을 올리고 기존 DB를 위한 순차 마이그레이션과
-되돌릴 수 있는 백업 절차를 함께 문서화해야 합니다.
+Phase 2 기능은 기존 event/finding/artifact와 JSON 필드로 표현할 수 있어 DB
+스키마를 변경하지 않았고 현재 버전은 2입니다. `AnalysisContext`에는 기본값이 있는
+필드만 추가했으므로 기존 분석기 계약의 마이그레이션도 필요 없습니다. 이후 DB
+스키마가 바뀌면 버전을 올리고 순차 마이그레이션과 백업 절차를 문서화해야 합니다.
+
+## Phase 2 분석 경계
+
+- EVTX는 `ElfFile\0` magic으로 감지하고 `python-evtx` 레코드를 순회합니다.
+  provider/channel/event ID 조합이 알려진 경우에만 의미를 분류하고 모든 이벤트에
+  channel·record locator와 제한 XML 원문을 둡니다.
+- 프로세스 부모는 ProcessGuid를 먼저 쓰고, 없을 때만 5분 안의 PID 후보가 하나인
+  경우 연결합니다. PID 재사용 후보가 여럿이면 모호 상태로 남깁니다.
+- Base64/Hex/URL은 그럴듯한 제한 길이 token만 기본 깊이 2로 변환합니다. 입력
+  전체 후보 수와 후보당 출력 크기를 제한하며 원문→변환 chain→결과를 보존합니다.
+- DNS/HTTP 규칙은 설명 가능한 문자열 길이·빈도·패턴 후보이며 공격 확정이 아닙니다.
+- 교차 자료 조회는 명시적 IP·도메인·계정·파일명 필드만 정규화해 source 둘 이상에
+  나타난 값을 묶습니다. 기존 시간순 조회는 여러 source의 통합 타임라인입니다.
+- HTML은 외부 자원을 요청하지 않으며 `html.escape(..., quote=True)`를 거친 값만
+  문서에 넣습니다.
 
 ## 시간과 원본성
 
