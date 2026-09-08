@@ -9,21 +9,49 @@ from fieldtrace.core import FieldTraceService
 
 
 @pytest.mark.integration
-def test_real_tshark_dns_fixture(tmp_path: Path) -> None:
+def test_real_tshark_packet_fixtures(tmp_path: Path) -> None:
     if shutil.which("tshark") is None:
         pytest.skip("실제 TShark가 설치되지 않아 패킷 통합 검증을 수행하지 않음")
-    encoded = Path("tests/fixtures/dns-query.pcap.hex").read_text(encoding="ascii")
-    pcap = tmp_path / "dns-query.pcap"
-    pcap.write_bytes(bytes.fromhex(encoded))
-    case = tmp_path / "case"
+    dns_encoded = Path("tests/fixtures/dns-query.pcap.hex").read_text(encoding="ascii")
+    dns_pcap = tmp_path / "dns-query.pcap"
+    dns_pcap.write_bytes(bytes.fromhex(dns_encoded))
+    dns_case = tmp_path / "dns-case"
     service = FieldTraceService()
 
-    summary = service.analyze(pcap, case_dir=case, profile="full")
-    hits = service.search(case, "challenge.example.test")
-    bundle = service.report_bundle(case)
+    dns_summary = service.analyze(dns_pcap, case_dir=dns_case, profile="full")
+    dns_hits = service.search(dns_case, "challenge.example.test")
+    dns_bundle = service.report_bundle(dns_case)
 
-    assert not summary.partial
-    dns = next(event for event in bundle["events"] if event["category"] == "network.dns_query")
+    assert not dns_summary.partial
+    dns = next(
+        event for event in dns_bundle["events"] if event["category"] == "network.dns_query"
+    )
     assert dns["fields"]["query"] == "challenge.example.test"
     assert dns["evidence_locator"] == "frame:1"
-    assert hits
+    assert dns_hits
+
+    http_encoded = Path("tests/fixtures/http-request.pcapng.hex").read_text(encoding="ascii")
+    http_pcapng = tmp_path / "http-request.pcapng"
+    http_pcapng.write_bytes(bytes.fromhex(http_encoded))
+    http_case = tmp_path / "http-case"
+
+    http_summary = service.analyze(http_pcapng, case_dir=http_case, profile="full")
+    http_hits = service.search(http_case, "FLAG{pcapng_http}")
+    http_bundle = service.report_bundle(http_case)
+
+    assert not http_summary.partial
+    http = next(
+        event
+        for event in http_bundle["events"]
+        if event["category"] == "network.http_request"
+    )
+    assert http["src_ip"] == "192.0.2.10"
+    assert http["src_port"] == 49152
+    assert http["dst_ip"] == "198.51.100.80"
+    assert http["dst_port"] == 80
+    assert http["fields"]["method"] == "GET"
+    assert http["fields"]["host"] == "challenge.example.test"
+    assert http["fields"]["uri_raw"] == "/FLAG%7Bpcapng_http%7D"
+    assert http["fields"]["uri_decoded"] == "/FLAG{pcapng_http}"
+    assert http["evidence_locator"] == "frame:1"
+    assert http_hits
