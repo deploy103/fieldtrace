@@ -144,6 +144,7 @@ def test_auth_does_not_choose_ambiguous_dst_fold(tmp_path: Path, make_context) -
 class TSharkFixtureRunner:
     def run(self, argv: list[str], **_kwargs: object) -> tuple[int, str, str]:
         assert argv[:3] == ["/usr/bin/tshark", "-n", "-r"]
+        assert "_ws.col.protocol" in argv
         stream = io.StringIO()
         writer = csv.writer(stream, delimiter="\t", quotechar='"', lineterminator="\n")
         writer.writerow(
