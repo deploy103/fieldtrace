@@ -1,0 +1,41 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# FieldTrace evidence and generated output
+input/*
+!input/.gitkeep
+cases/
+reports/
+derived/
+diagnostics/
+*.sqlite
+*.sqlite3
+*.db
+*.pcap
+*.pcapng
+*.evtx
+wheelhouse/
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
