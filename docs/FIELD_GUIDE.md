@@ -11,7 +11,8 @@
 1. 파일 목록에서 번호를 입력합니다. 모두 처리하려면 **전체 파일**을 고릅니다.
 2. 형식과 감지 이유를 확인합니다. 이상하면 **수동 형식 선택**으로 복구합니다.
 3. 분석 선택 화면에서 그냥 `Enter`를 눌러 **추천 빠른 분석**을 실행합니다.
-4. 결과의 **주목할 후보** 번호를 눌러 원문과 `line:N` 또는 `frame:N`을 봅니다.
+4. 결과의 **주목할 후보** 번호를 눌러 원문과 `line:N`, `frame:N` 또는
+   `channel:...;record:N`을 봅니다.
 5. 결과 메뉴에서 검색, 시간순 보기, 보고서 저장으로 이동합니다.
 
 `1` 전체 분석은 사용 가능한 모든 기본 분석을 실행합니다. `2` 직접 선택에서는
@@ -38,6 +39,12 @@
 - **실행 명령**: sudo COMMAND 원문을 봅니다. 명령은 절대 실행하지 않습니다.
 - **플래그·문자열 찾기**: 후보를 찾은 뒤 반드시 원문 근거를 확인합니다.
 
+PCAP 결과의 **상세 분석**에서는 TCP 대화 재조립 보기와 HTTP 본문 파일 추출을
+선택할 수 있습니다. 재조립은 TShark가 담당하고 FieldTrace는 완전성을 확정하지
+않습니다. 추출물은 `derived/`에 저장될 뿐 실행되지 않습니다. EVTX는 event ID만
+보지 않고 provider와 channel이 알려진 조합일 때만 로그인·프로세스·PowerShell·
+서비스 등록 의미를 붙입니다.
+
 후보는 관측 신호이지 침입이나 정답 확정이 아닙니다.
 
 ## 문제 발생 시
@@ -59,6 +66,6 @@
 ./run.sh analyze ./input --profile quick --case ./cases/match
 ./run.sh search --case ./cases/match --text 'FLAG{'
 ./run.sh timeline --case ./cases/match
-./run.sh report --case ./cases/match --format json
+./run.sh correlate --case ./cases/match
+./run.sh report --case ./cases/match --format html
 ```
-

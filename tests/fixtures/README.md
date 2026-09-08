@@ -21,3 +21,9 @@ HTTP PCAPNG 예상 정답:
 
 실제 TShark 통합 테스트는 TShark가 없으면 skip된다. 별도의 mock 테스트는 설치
 여부와 무관하게 argv의 `-n -r`, DNS 필드와 frame 근거를 검증한다.
+
+EVTX 의미 분류는 `tests/test_evtx.py`의 합성 XML/fake reader로 정답을 고정한다.
+실제 바이너리 I/O는 사용자 증거를 저장소에 넣지 않기 위해 추적 fixture와 분리했다.
+`tests/test_evtx_integration.py`는 `FIELDTRACE_EVTX_ISSUE38_FIXTURE`에 upstream
+`python-evtx` 공개 `issue_38.evtx` 경로를 지정했을 때만 실행되며, 다운로드 방법과
+기대 SHA-256은 `docs/HANDOFF.md`에 기록했다.
