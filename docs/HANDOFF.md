@@ -7,7 +7,8 @@
 - 기준 브랜치/커밋: `main` / `5a126fe`
 - 구현 범위: `요구사항.md`의 Codex Phase 1
 - Phase 1 기능 커밋: `3af5332`, `d076955`, 테스트 커밋 `06f9147`
-- Draft PR: 브랜치 push 뒤 이 문서에 URL과 상태를 추가한다.
+- Draft PR: `#1` <https://github.com/deploy103/fieldtrace/pull/1>
+  (`main` ← `feat/codex-foundation`, OPEN/DRAFT, merge하지 않음)
 
 이 문서는 자신의 최종 커밋 해시를 주장하지 않는다. 아래 결과는 2026-09-09
 현재 작업 폴더에서 실제 실행한 값이다.
