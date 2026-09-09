@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import shutil
+import sqlite3
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -134,6 +135,31 @@ def run_doctor(config: RuntimeConfig, *, runner: SafeExternalRunner | None = Non
         )
     else:
         checks.append(DoctorCheck("사례 폴더 쓰기", True, True, str(case_base)))
+    try:
+        with tempfile.TemporaryDirectory(prefix=".fieldtrace-sqlite-", dir=case_base) as directory:
+            database = sqlite3.connect(f"{directory}/probe.sqlite3", timeout=1)
+            try:
+                database.execute("PRAGMA journal_mode=WAL")
+                database.execute("CREATE TABLE readiness(value INTEGER NOT NULL)")
+                database.execute("INSERT INTO readiness VALUES (1)")
+                database.commit()
+                row = database.execute("SELECT value FROM readiness").fetchone()
+                if row != (1,):
+                    raise sqlite3.DatabaseError("SQLite round-trip result mismatch")
+            finally:
+                database.close()
+    except (OSError, sqlite3.Error) as exc:
+        checks.append(
+            DoctorCheck(
+                "SQLite 결과 저장",
+                False,
+                True,
+                str(exc),
+                "로컬 쓰기 가능한 사례 폴더를 사용하고 잠금/디스크 상태를 확인하세요.",
+            )
+        )
+    else:
+        checks.append(DoctorCheck("SQLite 결과 저장", True, True, "WAL 트랜잭션 확인"))
     try:
         free = shutil.disk_usage(case_base).free
         enough = free >= 100 * 1024 * 1024

@@ -9,6 +9,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
+from fieldtrace.reports._atomic import atomic_text_output
 from fieldtrace.reports.html_report import export_html
 from fieldtrace.reports.models import ReportBundle, to_plain
 
@@ -76,11 +77,9 @@ def export_json(bundle: ReportBundle | Mapping[str, Any], output: Path) -> Path:
     """Write a lossless UTF-8 JSON report, including raw evidence previews."""
 
     report = _bundle(bundle)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(report.as_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    with atomic_text_output(output, encoding="utf-8") as stream:
+        json.dump(report.as_dict(), stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write("\n")
     return output
 
 
@@ -255,8 +254,8 @@ def export_markdown(bundle: ReportBundle | Mapping[str, Any], output: Path) -> P
         )
     else:
         lines.append("기록 없음")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    with atomic_text_output(output, encoding="utf-8") as stream:
+        stream.write("\n".join(lines).rstrip() + "\n")
     return output
 
 
@@ -302,7 +301,6 @@ def export_csv(bundle: ReportBundle | Mapping[str, Any], output: Path) -> Path:
     """Write a spreadsheet-safe display CSV with every report record."""
 
     report = _bundle(bundle)
-    output.parent.mkdir(parents=True, exist_ok=True)
     groups = (
         ("source", report.sources),
         ("run", report.runs),
@@ -312,7 +310,7 @@ def export_csv(bundle: ReportBundle | Mapping[str, Any], output: Path) -> Path:
         ("artifact", report.artifacts),
         ("correlation", report.correlations),
     )
-    with output.open("w", encoding="utf-8-sig", newline="") as stream:
+    with atomic_text_output(output, encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=_CSV_COLUMNS)
         writer.writerow({column: protect_csv_cell(column) for column in _CSV_COLUMNS})
         for record_type, records in groups:

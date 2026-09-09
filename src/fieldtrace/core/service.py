@@ -8,14 +8,15 @@ import traceback
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import suppress
+from dataclasses import asdict
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
 
 from .artifacts import SafeArtifactSink
-from .cases import CasePaths, create_case, prepare_case
+from .cases import CasePaths, case_analysis_lock, create_case, prepare_case
 from .config import RuntimeConfig, load_config
-from .db import CaseStore
+from .db import CaseDatabaseError, CaseStore, case_database_error
 from .detector import DetectionResult, FormatDetector
 from .doctor import detect_environment
 from .hashing import HashJob, HashResult, start_hash
@@ -130,8 +131,14 @@ class FieldTraceService:
         )
         summary = AnalysisSummary(case_dir=case.root)
         environment = detect_environment(runner=self.runner)
-        with CaseStore(case) as store:
-            try:
+        try:
+            with case_analysis_lock(case), CaseStore(case) as store:
+                recovered = store.recover_interrupted_runs()
+                if recovered:
+                    summary.partial = True
+                    summary.messages.append(
+                        f"완료되지 않은 이전 분석 {recovered:,}건을 부분 실패로 복구했습니다."
+                    )
                 for input_path in input_files:
                     if cancel_event.is_set():
                         summary.cancelled = True
@@ -150,21 +157,40 @@ class FieldTraceService:
                         summary,
                         text_encoding,
                     )
-            except KeyboardInterrupt:
-                cancel_event.set()
-                summary.cancelled = True
-                summary.partial = True
-                summary.messages.append("사용자 취소: 이미 커밋된 부분 결과를 보존했습니다.")
-                for running in store.list_runs():
-                    if running.status == RunStatus.RUNNING.value:
-                        store.finish_run(
-                            running.id,
-                            status=RunStatus.CANCELLED,
-                            coverage=Coverage.PARTIAL,
-                            records_read=running.records_read,
-                            failures=running.failures,
-                            skip_reason="사용자 취소",
-                        )
+        except KeyboardInterrupt:
+            cancel_event.set()
+            summary.cancelled = True
+            summary.partial = True
+            summary.messages.append("사용자 취소: 이미 커밋된 부분 결과를 보존했습니다.")
+            try:
+                with CaseStore(case) as recovery_store:
+                    for running in recovery_store.list_runs():
+                        if running.status == RunStatus.RUNNING.value:
+                            recovery_store.finish_run(
+                                running.id,
+                                status=RunStatus.CANCELLED,
+                                coverage=Coverage.PARTIAL,
+                                records_read=running.records_read,
+                                failures=running.failures,
+                                skip_reason="사용자 취소",
+                            )
+            except (OSError, sqlite3.Error):
+                self._write_case_trace(case, "cancel-recovery", traceback.format_exc())
+        except CaseDatabaseError:
+            trace = traceback.format_exc()
+            # A transient lock/write error may already be gone.  Best-effort
+            # recovery prevents a misleading forever-running run; a genuinely
+            # full/read-only disk simply falls through to the external trace.
+            try:
+                with CaseStore(case, timeout=1.0) as recovery_store:
+                    recovery_store.recover_interrupted_runs()
+            except (OSError, sqlite3.Error):
+                pass
+            self._write_case_trace(case, "storage", trace)
+            raise
+        except sqlite3.Error as exc:
+            self._write_case_trace(case, "storage", traceback.format_exc())
+            raise case_database_error(case.database, exc, stage="분석 결과 저장") from exc
         return summary
 
     def _analyze_source(
@@ -299,6 +325,10 @@ class FieldTraceService:
                 cancel.set()
                 cancelled = True
                 break
+            except CaseDatabaseError:
+                raise
+            except sqlite3.Error as exc:
+                raise case_database_error(case.database, exc, stage="분석 결과 저장") from exc
             except Exception as exc:
                 failures += 1
                 trace = traceback.format_exc()
@@ -451,6 +481,7 @@ class FieldTraceService:
                         "pcap.parse",
                         "pcap.objects",
                         "evtx.parse",
+                        "evtx.process",
                         "read",
                         "timestamp",
                     }:
@@ -459,16 +490,18 @@ class FieldTraceService:
                     raise TypeError(f"알 수 없는 AnalysisItem: {type(item).__name__}")
                 pending += 1
                 if pending >= self.config.analysis.batch_size:
-                    store.connection.commit()
+                    store.commit()
                     pending = 0
-            store.connection.commit()
-        except sqlite3.Error:
-            store.connection.rollback()
+            store.commit()
+        except CaseDatabaseError:
             raise
+        except sqlite3.Error as exc:
+            store.connection.rollback()
+            raise case_database_error(store.paths.database, exc, stage="분석 결과 저장") from exc
         except BaseException:
             # Items yielded before an analyzer/cancellation failure are valid
             # partial evidence and must survive the module boundary.
-            store.connection.commit()
+            store.commit()
             raise
         return {
             "records_read": records_read,
@@ -527,6 +560,17 @@ class FieldTraceService:
                 stream.write(trace)
                 stream.write("\n")
         except OSError:
+            pass
+
+    @staticmethod
+    def _write_case_trace(case: CasePaths, label: str, trace: str) -> None:
+        path = case.diagnostics / f"{label}-error.log"
+        try:
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(trace)
+                stream.write("\n")
+        except OSError:
+            # A full or read-only disk can also prevent the fallback trace.
             pass
 
     def _collect_files(
@@ -609,6 +653,47 @@ class FieldTraceService:
     def report_bundle(self, case: Path | str, *, latest_only: bool = True) -> dict[str, Any]:
         with CaseStore(case, create=False) as store:
             return build_report_bundle(store, latest_only=latest_only)
+
+    def result_bundle(
+        self,
+        case: Path | str,
+        *,
+        latest_only: bool = True,
+        max_findings: int = 200,
+        max_diagnostics: int = 200,
+    ) -> dict[str, Any]:
+        """Return a bounded result-screen snapshot without loading every event."""
+
+        if max_findings < 1 or max_diagnostics < 1:
+            raise ValueError("결과 화면 제한은 0보다 커야 합니다.")
+        with CaseStore(case, create=False) as store:
+            runs = [asdict(run) for run in store.list_runs(latest_only=latest_only)]
+            run_ids = [int(run["id"]) for run in runs]
+            source_ids = {int(run["source_id"]) for run in runs}
+            sources = [
+                asdict(source) for source in store.list_sources() if source.id in source_ids
+            ]
+            findings = store.finding_rows(run_ids=run_ids, limit=max_findings + 1)
+            diagnostics = store.diagnostic_rows(run_ids=run_ids, limit=max_diagnostics + 1)
+            return {
+                "case": {
+                    "id": store.case_id,
+                    "directory": str(store.paths.root),
+                    "schema_version": store.schema_version(),
+                    "latest_only": latest_only,
+                },
+                "summary": store.counts(latest_only=latest_only),
+                "sources": sources,
+                "runs": runs,
+                "findings": findings[:max_findings],
+                "diagnostics": diagnostics[:max_diagnostics],
+                "view_truncated": {
+                    "findings": len(findings) > max_findings,
+                    "diagnostics": len(diagnostics) > max_diagnostics,
+                    "max_findings": max_findings,
+                    "max_diagnostics": max_diagnostics,
+                },
+            }
 
 
 def exit_code(summary: AnalysisSummary) -> int:

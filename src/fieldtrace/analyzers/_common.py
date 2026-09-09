@@ -23,10 +23,7 @@ _IPV4_RE = re.compile(
     r"(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![\w.])"
 )
 _IPV6_CANDIDATE_RE = re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f:]{0,4}(?![\w:])")
-_DOMAIN_RE = re.compile(
-    r"(?<![\w.-])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
-    r"[A-Za-z]{2,63}(?![\w.-])"
-)
+_DOMAIN_TOKEN_RE = re.compile(r"[A-Za-z0-9.-]+")
 _DEFAULT_FLAG_PREFIXES = ("FLAG", "flag", "CTF", "ctf")
 _QUOTED_RE = re.compile(r"""(?P<quote>["'])(?P<value>[^"'\r\n]{4,256})(?P=quote)""")
 
@@ -258,6 +255,8 @@ def progress(stage: str, processed: int, message: str = "") -> Progress:
 
 
 def extract_ipv4(text: str) -> list[str]:
+    if "." not in text:
+        return []
     return list(dict.fromkeys(_IPV4_RE.findall(text)))
 
 
@@ -265,6 +264,8 @@ def extract_ipv6(text: str) -> list[str]:
     # Validate candidates to keep the deliberately broad regular expression honest.
     import ipaddress
 
+    if ":" not in text:
+        return []
     values: list[str] = []
     for candidate in _IPV6_CANDIDATE_RE.findall(text):
         try:
@@ -277,7 +278,30 @@ def extract_ipv6(text: str) -> list[str]:
 
 
 def extract_domains(text: str) -> list[str]:
-    return list(dict.fromkeys(match.casefold() for match in _DOMAIN_RE.findall(text)))
+    if "." not in text:
+        return []
+    values: list[str] = []
+    for match in _DOMAIN_TOKEN_RE.finditer(text):
+        candidate = match.group(0).strip(".").casefold()
+        if not candidate or len(candidate) > 253 or "." not in candidate:
+            continue
+        labels = candidate.split(".")
+        if (
+            len(labels) < 2
+            or not 2 <= len(labels[-1]) <= 63
+            or not labels[-1].isalpha()
+            or any(
+                not label
+                or len(label) > 63
+                or label.startswith("-")
+                or label.endswith("-")
+                for label in labels
+            )
+        ):
+            continue
+        if candidate not in values:
+            values.append(candidate)
+    return values
 
 
 @lru_cache(maxsize=32)
@@ -288,12 +312,14 @@ def _flag_pattern(prefixes: tuple[str, ...]) -> re.Pattern[str]:
 
 
 def extract_flags(text: str, prefixes: tuple[str, ...] = _DEFAULT_FLAG_PREFIXES) -> list[str]:
-    if not prefixes:
+    if not prefixes or "{" not in text:
         return []
     return list(dict.fromkeys(_flag_pattern(prefixes).findall(text)))
 
 
 def extract_literals(text: str) -> list[str]:
+    if '"' not in text and "'" not in text:
+        return []
     values = []
     for match in _QUOTED_RE.finditer(text):
         value = match.group("value")

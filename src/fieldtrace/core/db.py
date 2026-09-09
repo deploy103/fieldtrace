@@ -36,6 +36,39 @@ class SchemaError(RuntimeError):
     """Raised for an unsupported or corrupt case database schema."""
 
 
+class CaseDatabaseError(OSError):
+    """A SQLite failure translated into a field-recoverable Korean error."""
+
+    def __init__(self, stage: str, reason: str, next_action: str) -> None:
+        self.stage = stage
+        self.reason = reason
+        self.next_action = next_action
+        super().__init__(f"{reason} 다음 행동: {next_action}")
+
+
+def case_database_error(path: Path, exc: sqlite3.Error, *, stage: str) -> CaseDatabaseError:
+    """Classify common SQLite failures without claiming that data was saved."""
+
+    detail = str(exc).strip() or type(exc).__name__
+    folded = detail.casefold()
+    if "locked" in folded or "busy" in folded:
+        reason = f"사례 DB가 다른 작업에 의해 잠겼습니다: {path}"
+        action = "다른 FieldTrace/SQLite 작업을 닫고 잠시 후 같은 명령을 다시 실행하세요."
+    elif "database or disk is full" in folded or "disk full" in folded:
+        reason = f"사례 결과를 저장할 디스크 공간이 부족합니다: {path}"
+        action = "사례 폴더가 있는 디스크의 여유 공간을 확보한 뒤 다시 실행하세요."
+    elif "readonly" in folded or "read-only" in folded:
+        reason = f"사례 DB 또는 폴더가 읽기 전용입니다: {path}"
+        action = "--case를 쓰기 가능한 폴더로 지정하고 원본 증거는 그대로 두세요."
+    elif any(marker in folded for marker in ("malformed", "not a database", "corrupt")):
+        reason = f"사례 DB가 손상되었거나 SQLite 형식이 아닙니다: {path}"
+        action = "기존 DB를 보존하고 새 사례 폴더로 다시 분석하세요."
+    else:
+        reason = f"사례 DB 처리에 실패했습니다: {detail}"
+        action = "사례 폴더 권한과 디스크 상태를 확인한 뒤 다시 실행하세요."
+    return CaseDatabaseError(stage, reason, action)
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -165,7 +198,13 @@ ALTER TABLE sources ADD COLUMN hash_generation TEXT;
 class CaseStore:
     """Persistence facade for one prepared case directory."""
 
-    def __init__(self, case: Path | str | CasePaths, *, create: bool = True) -> None:
+    def __init__(
+        self,
+        case: Path | str | CasePaths,
+        *,
+        create: bool = True,
+        timeout: float = 10.0,
+    ) -> None:
         if isinstance(case, CasePaths):
             self.paths = case
         elif create:
@@ -177,15 +216,28 @@ class CaseStore:
             self.paths = case_paths(root)
             if not self.paths.database.is_file():
                 raise FileNotFoundError(f"사례 DB를 찾을 수 없습니다: {self.paths.database}")
-        self.connection = sqlite3.connect(self.paths.database, timeout=10)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA foreign_keys=ON")
-        self.connection.execute("PRAGMA busy_timeout=10000")
-        # WAL lets read-only result views stay responsive during batch writes.
-        self.connection.execute("PRAGMA journal_mode=WAL")
-        self.fts5_available = False
-        self._run_source_cache: dict[int, int] = {}
-        self._migrate()
+        if timeout < 0:
+            raise ValueError("SQLite timeout은 0 이상이어야 합니다.")
+        try:
+            self.connection = sqlite3.connect(self.paths.database, timeout=timeout)
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute("PRAGMA foreign_keys=ON")
+            self.connection.execute(f"PRAGMA busy_timeout={round(timeout * 1000)}")
+            # WAL lets read-only result views stay responsive during batch writes.
+            self.connection.execute("PRAGMA journal_mode=WAL")
+            self.fts5_available = False
+            self._run_source_cache: dict[int, int] = {}
+            self._migrate()
+        except CaseDatabaseError:
+            connection = getattr(self, "connection", None)
+            if connection is not None:
+                connection.close()
+            raise
+        except sqlite3.Error as exc:
+            connection = getattr(self, "connection", None)
+            if connection is not None:
+                connection.close()
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 열기") from exc
 
     def __enter__(self) -> CaseStore:
         return self
@@ -200,11 +252,73 @@ class CaseStore:
     def transaction(self) -> Iterator[sqlite3.Connection]:
         try:
             yield self.connection
+        except sqlite3.Error as exc:
+            self.connection.rollback()
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 저장") from exc
         except BaseException:
             self.connection.rollback()
             raise
         else:
+            try:
+                self.connection.commit()
+            except sqlite3.Error as exc:
+                self.connection.rollback()
+                raise case_database_error(
+                    self.paths.database, exc, stage="사례 DB 저장"
+                ) from exc
+
+    def commit(self) -> None:
+        try:
             self.connection.commit()
+        except sqlite3.Error as exc:
+            self.connection.rollback()
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 저장") from exc
+
+    def recover_interrupted_runs(self) -> int:
+        """Mark runs left active by a terminated process as honest partial failures."""
+
+        try:
+            rows = list(
+                self.connection.execute(
+                    "SELECT id,source_id,records_read,failures FROM runs WHERE status=?",
+                    (RunStatus.RUNNING.value,),
+                )
+            )
+        except sqlite3.Error as exc:
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 복구") from exc
+        if not rows:
+            return 0
+        with self.transaction():
+            for row in rows:
+                run_id = int(row["id"])
+                self.connection.execute(
+                    "UPDATE runs SET status=?,coverage=?,failures=?,skip_reason=?,finished_at=? "
+                    "WHERE id=? AND status=?",
+                    (
+                        RunStatus.FAILED.value,
+                        Coverage.PARTIAL.value,
+                        int(row["failures"]) + 1,
+                        "이전 분석 프로세스가 완료 전에 종료됨",
+                        utc_now(),
+                        run_id,
+                        RunStatus.RUNNING.value,
+                    ),
+                )
+                self.connection.execute(
+                    "INSERT INTO diagnostics(source_id,run_id,level,stage,message,next_action,"
+                    "exception,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                    (
+                        int(row["source_id"]),
+                        run_id,
+                        "error",
+                        "recovery",
+                        "이전 분석이 완료 상태를 기록하지 못하고 종료되었습니다.",
+                        "저장된 부분 결과를 확인한 뒤 같은 입력을 새 run으로 다시 분석하세요.",
+                        None,
+                        utc_now(),
+                    ),
+                )
+        return len(rows)
 
     def _migrate(self) -> None:
         table = self.connection.execute(
@@ -511,7 +625,7 @@ class CaseStore:
         )
         self._index("event", event.id, evidence.source_id, run_id, body)
         if commit:
-            self.connection.commit()
+            self.commit()
         return event.id
 
     def add_finding(self, run_id: int, finding: Finding, *, commit: bool = True) -> int:
@@ -556,7 +670,7 @@ class CaseStore:
         )
         self._index("finding", finding.id, source_id, run_id, body)
         if commit:
-            self.connection.commit()
+            self.commit()
         return finding.id
 
     def add_artifact(self, run_id: int, artifact: Artifact, *, commit: bool = True) -> int:
@@ -595,7 +709,7 @@ class CaseStore:
             ),
         )
         if commit:
-            self.connection.commit()
+            self.commit()
         return artifact_id
 
     def add_diagnostic(
@@ -621,7 +735,7 @@ class CaseStore:
             ),
         )
         if commit:
-            self.connection.commit()
+            self.commit()
         return int(cursor.lastrowid)
 
     def write_items(
@@ -653,13 +767,18 @@ class CaseStore:
                     raise TypeError(f"알 수 없는 AnalysisItem: {type(item).__name__}")
                 pending += 1
                 if pending >= batch_size:
-                    self.connection.commit()
+                    self.commit()
                     pending = 0
+        except CaseDatabaseError:
+            raise
+        except sqlite3.Error as exc:
+            self.connection.rollback()
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 저장") from exc
         except BaseException:
             self.connection.rollback()
             raise
         else:
-            self.connection.commit()
+            self.commit()
         return counts
 
     def _run_source(self, run_id: int) -> int:
@@ -700,33 +819,61 @@ class CaseStore:
     def rows(self, sql: str, parameters: Sequence[object] = ()) -> list[dict[str, Any]]:
         """Internal/report query helper; SQL must be owned by trusted application code."""
 
-        return [dict(row) for row in self.connection.execute(sql, parameters)]
+        try:
+            return [dict(row) for row in self.connection.execute(sql, parameters)]
+        except sqlite3.Error as exc:
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 조회") from exc
 
     def event_rows(self, *, run_ids: Sequence[int] | None = None) -> list[dict[str, Any]]:
+        return list(self.iter_event_rows(run_ids=run_ids))
+
+    def iter_event_rows(
+        self, *, run_ids: Sequence[int] | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """Stream event dictionaries for memory-bounded aggregate queries."""
+
         sql = "SELECT * FROM events"
         params: list[object] = []
         if run_ids:
             sql += f" WHERE run_id IN ({','.join('?' for _ in run_ids)})"
             params.extend(run_ids)
         sql += " ORDER BY id"
-        return self.rows(sql, params)
+        try:
+            for row in self.connection.execute(sql, params):
+                yield dict(row)
+        except sqlite3.Error as exc:
+            raise case_database_error(self.paths.database, exc, stage="사례 DB 조회") from exc
 
-    def finding_rows(self, *, run_ids: Sequence[int] | None = None) -> list[dict[str, Any]]:
+    def finding_rows(
+        self, *, run_ids: Sequence[int] | None = None, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         sql = "SELECT * FROM findings"
         params: list[object] = []
         if run_ids:
             sql += f" WHERE run_id IN ({','.join('?' for _ in run_ids)})"
             params.extend(run_ids)
         sql += " ORDER BY id"
+        if limit is not None:
+            if limit < 1:
+                raise ValueError("finding limit은 0보다 커야 합니다.")
+            sql += " LIMIT ?"
+            params.append(limit)
         return self.rows(sql, params)
 
-    def diagnostic_rows(self, *, run_ids: Sequence[int] | None = None) -> list[dict[str, Any]]:
+    def diagnostic_rows(
+        self, *, run_ids: Sequence[int] | None = None, limit: int | None = None
+    ) -> list[dict[str, Any]]:
         sql = "SELECT * FROM diagnostics"
         params: list[object] = []
         if run_ids:
             sql += f" WHERE run_id IN ({','.join('?' for _ in run_ids)})"
             params.extend(run_ids)
         sql += " ORDER BY id"
+        if limit is not None:
+            if limit < 1:
+                raise ValueError("diagnostic limit은 0보다 커야 합니다.")
+            sql += " LIMIT ?"
+            params.append(limit)
         return self.rows(sql, params)
 
     def latest_run_ids(self) -> list[int]:

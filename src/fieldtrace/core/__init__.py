@@ -1,8 +1,16 @@
 """Core services and stable public interfaces."""
 
-from .cases import CASE_DB_NAME, CasePaths, case_paths, create_case, prepare_case
+from .cases import (
+    CASE_DB_NAME,
+    CaseInUseError,
+    CasePaths,
+    case_analysis_lock,
+    case_paths,
+    create_case,
+    prepare_case,
+)
 from .config import ConfigError, RuntimeConfig, load_config
-from .db import SCHEMA_VERSION, CaseStore, SchemaError
+from .db import SCHEMA_VERSION, CaseDatabaseError, CaseStore, SchemaError
 from .detector import DetectionResult, FormatDetector
 from .doctor import DoctorCheck, DoctorResult, detect_environment, run_doctor
 from .registry import AnalyzerRegistry
@@ -19,6 +27,8 @@ __all__ = [
     "CASE_DB_NAME",
     "SCHEMA_VERSION",
     "AnalyzerRegistry",
+    "CaseDatabaseError",
+    "CaseInUseError",
     "CasePaths",
     "CaseStore",
     "ConfigError",
@@ -39,6 +49,7 @@ __all__ = [
     "SearchHit",
     "TimelineEntry",
     "builtin_registry",
+    "case_analysis_lock",
     "case_paths",
     "create_case",
     "detect_environment",
