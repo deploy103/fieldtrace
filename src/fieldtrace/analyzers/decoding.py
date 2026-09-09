@@ -79,10 +79,15 @@ def _decode_once(value: str) -> list[tuple[str, str]]:
 
 def _encoded_candidates(text: str) -> list[str]:
     values: list[str] = []
-    for pattern in (_URL_RE, _BASE64_RE, _HEX_RE):
+    patterns: list[re.Pattern[str]] = [_BASE64_RE]
+    if "%" in text:
+        patterns.insert(0, _URL_RE)
+    if any(character in text for character in "abcdefABCDEF0123456789"):
+        patterns.append(_HEX_RE)
+    for pattern in patterns:
         for match in pattern.finditer(text):
             value = match.group(0).strip(".,;:()[]")
-            if value and value not in values:
+            if value and len(value) <= _MAX_ENCODED_CHARS and value not in values:
                 values.append(value)
     return values
 

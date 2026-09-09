@@ -106,6 +106,8 @@ class MenuController(Protocol):
 
     def analyze_detail(self, selected_tasks: frozenset[str]) -> ResultView: ...
 
+    def troubleshoot(self) -> Sequence[object]: ...
+
 
 def _as_mapping(value: object) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
@@ -311,7 +313,12 @@ def _result_loop(
         except KeyboardInterrupt:
             console.print("작업을 취소했습니다. 저장된 결과로 돌아갑니다.", markup=False)
         except Exception as error:
-            render_error("결과 작업", error, "결과 메뉴에서 다시 시도하세요.", console=console)
+            render_error(
+                getattr(error, "stage", "결과 작업"),
+                getattr(error, "reason", error),
+                getattr(error, "next_action", "결과 메뉴에서 다시 시도하세요."),
+                console=console,
+            )
 
 
 def run_menu(
@@ -331,6 +338,7 @@ def run_menu(
             console=console,
             file_provider=controller.list,
             detection_provider=controller.detect,
+            troubleshooting_provider=getattr(controller, "troubleshoot", None),
         )
         if selection.status is MenuStatus.QUIT:
             return 0

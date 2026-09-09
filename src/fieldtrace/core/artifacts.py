@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import uuid
+from contextlib import suppress
 from pathlib import Path
 
 from .models import Artifact, EvidenceRef
@@ -39,8 +42,19 @@ class SafeArtifactSink:
         while candidate.exists():
             candidate = self.directory / f"{stem}-{counter}{suffix}"
             counter += 1
-        with candidate.open("xb") as stream:
-            stream.write(data)
+        temporary = self.directory / f".{candidate.name}.{uuid.uuid4().hex}.part"
+        try:
+            with temporary.open("xb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # The candidate was chosen under a core-owned run directory.  Replace
+            # only after a complete, durable temporary write.
+            os.replace(temporary, candidate)
+        except BaseException:
+            with suppress(OSError):
+                temporary.unlink(missing_ok=True)
+            raise
         return Artifact(
             path=str(candidate),
             sha256=hashlib.sha256(data).hexdigest(),

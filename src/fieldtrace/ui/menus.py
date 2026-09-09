@@ -7,7 +7,7 @@ run subprocesses, or start analysis; callers pass their choices to core services
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from enum import StrEnum
 from pathlib import Path
 
@@ -341,6 +341,7 @@ def choose_files(
     detected_formats: dict[Path, tuple[str, str]] | None = None,
     file_provider: Callable[[Path], Sequence[Path]] | None = None,
     detection_provider: Callable[[Sequence[Path]], Mapping[Path, object]] | None = None,
+    troubleshooting_provider: Callable[[], Sequence[object]] | None = None,
 ) -> MenuResult[FileChoice]:
     """Browse files with pagination, search, paste, and all-file selection.
 
@@ -408,7 +409,7 @@ def choose_files(
             markup=False,
         )
         console.print(
-            "번호/쉼표: 선택  a: 전체  n: 다음  b: 이전  s: 파일명 검색  p: 경로 붙여넣기",
+            "번호/쉼표: 선택  a: 전체  n: 다음  b: 이전  s: 검색  p: 경로  d: 문제 해결",
             markup=False,
         )
         console.print("Enter: 새로고침  0: 뒤로  q: 종료", markup=False)
@@ -419,6 +420,39 @@ def choose_files(
         if command == "q":
             return MenuResult(MenuStatus.QUIT)
         if not raw:
+            continue
+        if command == "d":
+            if troubleshooting_provider is None:
+                console.print("이 실행 환경에서는 진단을 사용할 수 없습니다.", markup=False)
+                continue
+            try:
+                checks = troubleshooting_provider()
+            except Exception as error:
+                console.print(f"환경 진단 실패: {strip_terminal_controls(error)}", markup=False)
+                console.print("./run.sh doctor 명령으로 다시 확인하세요.", markup=False)
+                continue
+            table = Table(title="문제 해결 · 환경 진단", expand=True)
+            table.add_column("상태", width=6)
+            table.add_column("항목", width=18, overflow="fold")
+            table.add_column("확인 내용", overflow="fold")
+            table.add_column("다음 행동", overflow="fold")
+            for check in checks:
+                if isinstance(check, Mapping):
+                    data = check
+                elif is_dataclass(check) and not isinstance(check, type):
+                    data = asdict(check)
+                else:
+                    data = getattr(check, "__dict__", {})
+                ok = bool(data.get("ok", False))
+                required = bool(data.get("required", False))
+                status = "정상" if ok else ("오류" if required else "선택")
+                table.add_row(
+                    status,
+                    Text(strip_terminal_controls(data.get("name", "진단"))),
+                    Text(strip_terminal_controls(data.get("detail", ""))),
+                    Text(strip_terminal_controls(data.get("next_action", ""))),
+                )
+            console.print(table)
             continue
         if command == "n":
             if page + 1 < page_count:

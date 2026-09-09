@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import os
 import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 CASE_DB_NAME = "fieldtrace.sqlite3"
+
+
+class CaseInUseError(OSError):
+    """Raised when another FieldTrace process is writing the same case."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,3 +64,40 @@ def create_case(base: Path | str = "cases", *, now: datetime | None = None) -> C
             continue
         return prepare_case(candidate)
     raise OSError("고유한 사례 폴더 이름을 만들 수 없습니다.")
+
+
+@contextmanager
+def case_analysis_lock(case: CasePaths) -> Iterator[None]:
+    """Hold a process-scoped writer lock for one analysis request.
+
+    SQLite still protects individual transactions.  This lock prevents two
+    FieldTrace analysis processes from interleaving runs in the same case and
+    lets the next process safely recover runs left as ``running`` after a crash.
+    Read-only search/report operations do not take this lock.
+    """
+
+    lock_path = case.root / ".analysis.lock"
+    try:
+        stream = lock_path.open("a+b")
+    except OSError as exc:
+        raise PermissionError(f"사례 분석 잠금 파일을 만들 수 없습니다: {lock_path}") from exc
+
+    try:
+        try:
+            import fcntl
+        except ImportError:  # pragma: no cover - native Windows is outside the initial scope
+            yield
+            return
+        try:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise CaseInUseError(
+                "같은 사례를 다른 FieldTrace 분석이 사용 중입니다. "
+                "기존 분석을 완료하거나 취소한 뒤 다시 시도하세요."
+            ) from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+    finally:
+        stream.close()

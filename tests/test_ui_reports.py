@@ -74,6 +74,37 @@ def test_file_menu_hides_gitkeep_placeholder(tmp_path: Path) -> None:
     assert ".gitkeep" not in console.export_text()
 
 
+def test_file_menu_runs_troubleshooting_without_leaving_browser(tmp_path: Path) -> None:
+    calls = 0
+
+    def troubleshoot() -> tuple[dict[str, object], ...]:
+        nonlocal calls
+        calls += 1
+        return (
+            {
+                "name": "SQLite 결과 저장",
+                "ok": False,
+                "required": True,
+                "detail": "잠금 상태",
+                "next_action": "다른 작업을 닫으세요",
+            },
+        )
+
+    console = Console(width=80, record=True, force_terminal=False, color_system=None)
+    result = choose_files(
+        tmp_path,
+        input_fn=_answers("d", "q"),
+        console=console,
+        troubleshooting_provider=troubleshoot,
+    )
+
+    assert result.status is MenuStatus.QUIT
+    assert calls == 1
+    output = console.export_text()
+    assert "문제 해결 · 환경 진단" in output
+    assert "다른 작업을 닫으세요" in output
+
+
 def test_unimplemented_detail_action_is_disabled() -> None:
     console = Console(width=80, record=True, force_terminal=False, color_system=None)
 

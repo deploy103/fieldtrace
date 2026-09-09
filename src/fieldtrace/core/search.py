@@ -153,10 +153,9 @@ def correlations(
     if min_sources < 1 or limit < 1:
         raise ValueError("min_sources와 limit은 0보다 커야 합니다.")
     run_ids = store.latest_run_ids() if latest_only else None
-    rows = store.event_rows(run_ids=run_ids)
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     wanted = value.casefold() if value is not None else None
-    for row in rows:
+    for row in store.iter_event_rows(run_ids=run_ids):
         for entry_kind, normalized, display in _correlation_values(row):
             if kind is not None and entry_kind != kind:
                 continue

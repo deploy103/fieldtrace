@@ -14,6 +14,7 @@ from rich.table import Table
 from rich.text import Text
 
 from fieldtrace.core import (
+    CaseDatabaseError,
     FieldTraceService,
     InputError,
     case_paths,
@@ -24,7 +25,7 @@ from fieldtrace.core import (
 )
 from fieldtrace.core.models import AnalysisSummary, Environment, Progress, SourceFormat
 from fieldtrace.core.state import LocalState, StateStore
-from fieldtrace.reports import export_report
+from fieldtrace.reports import OutputWriteError, export_report
 from fieldtrace.ui import (
     ANALYSIS_TASKS,
     DETAIL_TASKS,
@@ -126,6 +127,18 @@ def _view_from_bundle(bundle: Mapping[str, Any]) -> ResultView:
         partial=partial,
         cancelled=any(run.get("status") == "cancelled" for run in runs),
     )
+    truncated = bundle.get("view_truncated", {})
+    if isinstance(truncated, Mapping):
+        if truncated.get("findings"):
+            summary.messages.append(
+                f"결과 화면은 후보 {int(truncated.get('max_findings', 0)):,}개만 표시합니다. "
+                "검색 또는 보고서에서 전체 결과를 확인하세요."
+            )
+        if truncated.get("diagnostics"):
+            summary.messages.append(
+                f"결과 화면은 진단 {int(truncated.get('max_diagnostics', 0)):,}개만 표시합니다. "
+                "보고서에서 전체 진단을 확인하세요."
+            )
     findings = tuple(_with_evidence(item) for item in bundle.get("findings", ()))
     return ResultView(summary, findings, _diagnostics(bundle))
 
@@ -204,6 +217,11 @@ class InteractiveController:
             self._cached_environment = detect_environment(runner=self.service.runner)
         return self._cached_environment
 
+    def troubleshoot(self) -> Sequence[object]:
+        result = run_doctor(self.service.config, runner=self.service.runner)
+        self._cached_environment = result.environment
+        return result.checks
+
     def tasks(
         self, paths: Sequence[Path], detections: Mapping[Path, object]
     ) -> Sequence[TaskOption]:
@@ -241,7 +259,7 @@ class InteractiveController:
         if case is None:
             return False
         try:
-            bundle = self.service.report_bundle(case)
+            bundle = self.service.result_bundle(case)
         except (OSError, ValueError):
             return False
         wanted = {str(path.resolve()) for path in paths}
@@ -287,8 +305,11 @@ class InteractiveController:
         self.state.last_directory = paths[0].parent if paths else self.default_directory
         self.state.last_case = case.root
         self.state_store.save(self.state)
-        bundle = self.service.report_bundle(case.root)
+        bundle = self.service.result_bundle(case.root)
         view = _view_from_bundle(bundle)
+        combined.messages.extend(
+            message for message in view.summary.messages if message not in combined.messages
+        )
         return ResultView(
             combined,
             view.findings,
@@ -302,7 +323,7 @@ class InteractiveController:
         if case is None:
             raise FileNotFoundError("최근 사례 결과를 찾을 수 없습니다")
         self.current_case = case
-        bundle = self.service.report_bundle(case)
+        bundle = self.service.result_bundle(case)
         self.current_paths = tuple(Path(str(source["path"])) for source in bundle["sources"])
         view = _view_from_bundle(bundle)
         return ResultView(
@@ -374,8 +395,11 @@ class InteractiveController:
                     progress=update,
                 )
                 _merge_summary(combined, summary)
-        bundle = self.service.report_bundle(case)
+        bundle = self.service.result_bundle(case)
         view = _view_from_bundle(bundle)
+        combined.messages.extend(
+            message for message in view.summary.messages if message not in combined.messages
+        )
         return ResultView(
             combined,
             view.findings,
@@ -393,7 +417,7 @@ class InteractiveController:
         case = self._usable_case()
         if case is None:
             return ()
-        return self.service.timeline(case)
+        return self.service.timeline(case, limit=500)
 
     def evidence(self, item: object) -> object | None:
         case = self._usable_case()
@@ -517,13 +541,19 @@ def analyze_command(
                 progress=update,
                 text_encoding=encoding,
             )
-        bundle = service.report_bundle(summary.case_dir)
+        bundle = service.result_bundle(summary.case_dir)
         view = _view_from_bundle(bundle)
+        summary.messages.extend(
+            message for message in view.summary.messages if message not in summary.messages
+        )
         render_result(summary, view.findings, view.diagnostics, console=console)
         console.print(Text(f"사례 폴더: {summary.case_dir}"))
         raise typer.Exit(exit_code(summary))
     except typer.Exit:
         raise
+    except CaseDatabaseError as exc:
+        render_error(exc.stage, exc.reason, exc.next_action, console=console)
+        raise typer.Exit(1) from exc
     except (OSError, ValueError) as exc:
         render_error("분석", exc, "입력 경로, 형식, 프로필을 확인하세요.", console=console)
         raise typer.Exit(2) from exc
@@ -562,7 +592,7 @@ def search_command(
 def timeline_command(
     ctx: typer.Context,
     case: Annotated[Path, typer.Option("--case", help="사례 결과 폴더")],
-    limit: Annotated[int | None, typer.Option("--limit", min=1)] = None,
+    limit: Annotated[int | None, typer.Option("--limit", min=1)] = 1000,
 ) -> None:
     """정규화된 시각순 결과와 시간 미상 결과를 표시합니다."""
 
@@ -625,6 +655,9 @@ def report_command(
     try:
         service = _make_service(ctx.obj.get("config"))
         result = export_report(service.report_bundle(case), output, normalized)  # type: ignore[arg-type]
+    except OutputWriteError as exc:
+        render_error(exc.stage, exc.reason, exc.next_action, console=console)
+        raise typer.Exit(1) from exc
     except (OSError, ValueError) as exc:
         render_error("보고서", exc, "사례 경로와 보고서 형식을 확인하세요.", console=console)
         raise typer.Exit(2) from exc

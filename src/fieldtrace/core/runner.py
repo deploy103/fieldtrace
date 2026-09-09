@@ -44,13 +44,15 @@ class SafeExternalRunner:
         limit = self.default_max_output if max_output_bytes is None else max_output_bytes
         if limit <= 0:
             raise ValueError("max_output_bytes는 0보다 커야 합니다.")
+        if cancel.is_set():
+            raise ExternalToolCancelled("사용자가 외부 도구 실행을 취소했습니다.")
         deadline = time.monotonic() + (self.default_timeout if timeout is None else timeout)
         safe_env = self._environment(env)
         isolated_home = tempfile.TemporaryDirectory(prefix="fieldtrace-tool-")
-        safe_env.setdefault("HOME", isolated_home.name)
-        safe_env.setdefault("XDG_CONFIG_HOME", isolated_home.name)
+        safe_env["HOME"] = isolated_home.name
+        safe_env["XDG_CONFIG_HOME"] = isolated_home.name
         if os.name == "nt":
-            safe_env.setdefault("USERPROFILE", isolated_home.name)
+            safe_env["USERPROFILE"] = isolated_home.name
         creationflags = 0
         start_new_session = os.name != "nt"
         if os.name == "nt":

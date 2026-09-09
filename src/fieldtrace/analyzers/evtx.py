@@ -43,6 +43,9 @@ _SYSMON_PROVIDER = "microsoft-windows-sysmon"
 _POWERSHELL_PROVIDER = "microsoft-windows-powershell"
 _SERVICE_PROVIDER = "service control manager"
 _PID_LINK_WINDOW_SECONDS = 300.0
+_MAX_PROCESS_GUIDS = 50_000
+_MAX_PROCESS_PIDS = 50_000
+_MAX_PID_HISTORY = 16
 
 
 class _Record(Protocol):
@@ -171,7 +174,7 @@ def _link_process_parent(
     record_id: str,
     guid_index: dict[str, dict[str, Any]],
     pid_index: dict[int, list[dict[str, Any]]],
-) -> str:
+) -> tuple[str, int]:
     guid, parent_guid, pid, parent_pid = _process_identity(provider, fields)
     link_method = "none"
     parent: dict[str, Any] | None = None
@@ -219,14 +222,22 @@ def _link_process_parent(
         "epoch": _epoch(timestamp_utc),
         "image": _string_value(fields, "Image", "NewProcessName"),
     }
+    evictions = 0
     if guid:
-        guid_index[guid.casefold()] = current
+        guid_key = guid.casefold()
+        if guid_key not in guid_index and len(guid_index) >= _MAX_PROCESS_GUIDS:
+            guid_index.pop(next(iter(guid_index)))
+            evictions += 1
+        guid_index[guid_key] = current
     if pid is not None:
+        if pid not in pid_index and len(pid_index) >= _MAX_PROCESS_PIDS:
+            pid_index.pop(next(iter(pid_index)))
+            evictions += 1
         history = pid_index.setdefault(pid, [])
         history.append(current)
-        if len(history) > 32:
-            del history[:-32]
-    return link_method
+        if len(history) > _MAX_PID_HISTORY:
+            del history[:-_MAX_PID_HISTORY]
+    return link_method, evictions
 
 
 def _timestamp(raw: str | None) -> tuple[str | None, str]:
@@ -341,6 +352,7 @@ class EvtxAnalyzer:
         process_links: Counter[str] = Counter()
         process_guid_index: dict[str, dict[str, Any]] = {}
         process_pid_index: dict[int, list[dict[str, Any]]] = {}
+        process_cache_evictions = 0
         decode_tracker = DecodeTracker()
         yield progress("evtx", 0, "Windows 이벤트 레코드를 읽는 중")
         try:
@@ -454,7 +466,7 @@ class EvtxAnalyzer:
                     category = _classify(provider, channel, event_id)
                     counts[category] += 1
                     if category == "process.create":
-                        method = _link_process_parent(
+                        method, evictions = _link_process_parent(
                             fields,
                             provider=provider,
                             timestamp_utc=timestamp_utc,
@@ -463,6 +475,7 @@ class EvtxAnalyzer:
                             pid_index=process_pid_index,
                         )
                         process_links[method] += 1
+                        process_cache_evictions += evictions
                     if _task_selected(context, category):
                         yield Event(
                             category=category,
@@ -549,6 +562,17 @@ class EvtxAnalyzer:
                 fields={
                     "methods": dict(process_links),
                     "pid_window_seconds": _PID_LINK_WINDOW_SECONDS,
+                    "cache_evictions": process_cache_evictions,
+                    "guid_cache_limit": _MAX_PROCESS_GUIDS,
+                    "pid_cache_limit": _MAX_PROCESS_PIDS,
                 },
+            )
+        if process_cache_evictions:
+            yield Diagnostic(
+                "warning",
+                "evtx.process",
+                f"프로세스 부모 연결 캐시 제한으로 오래된 항목을 "
+                f"{process_cache_evictions:,}회 제거했습니다.",
+                "부모 연결이 꼭 필요하면 EVTX 범위를 나눠 다시 분석하세요.",
             )
         yield progress("evtx", processed, f"EVTX {processed:,}개 레코드 처리 완료")

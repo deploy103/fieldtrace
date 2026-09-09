@@ -52,6 +52,8 @@ def test_doctor_accepts_official_lowercase_protocol_pseudo_field(
 
     assert result.ready
     assert not result.degraded
+    sqlite_check = next(check for check in result.checks if check.name == "SQLite 결과 저장")
+    assert sqlite_check.ok
     field_check = next(check for check in result.checks if check.name == "TShark 필드")
     assert field_check.ok
     assert field_check.detail == "필수 필드 확인"

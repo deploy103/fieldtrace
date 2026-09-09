@@ -8,6 +8,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from fieldtrace.reports._atomic import atomic_text_output
 from fieldtrace.reports.models import ReportBundle, to_plain
 
 
@@ -188,6 +189,6 @@ input.addEventListener('input',()=>{{
 }});
 </script></body></html>
 """
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(document, encoding="utf-8")
+    with atomic_text_output(output, encoding="utf-8") as stream:
+        stream.write(document)
     return output
