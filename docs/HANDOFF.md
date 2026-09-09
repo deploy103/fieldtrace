@@ -10,6 +10,8 @@
 - Phase 3 기능·테스트 커밋: `c50567c`
 - 최초 GitHub Release: `v0.1.0` <https://github.com/deploy103/fieldtrace/releases/tag/v0.1.0>
   (안정화 브랜치 HEAD 기준 wheel, source archive, SHA-256 첨부)
+- `v0.1.0` 이후 README 사용자 문서 보강은 `feat/phase3-stabilization` 브랜치에
+  후속 커밋으로 유지한다. 이미 발행한 태그와 릴리스 산출물은 변경하지 않는다.
 - Phase 1 Draft PR: `#1` <https://github.com/deploy103/fieldtrace/pull/1>
   (`main` ← `feat/codex-foundation`, OPEN/DRAFT, 자동 병합하지 않음)
 - Phase 2 stacked Draft PR: `#2` <https://github.com/deploy103/fieldtrace/pull/2>
@@ -227,6 +229,21 @@ env FIELDTRACE_EVTX_ISSUE38_FIXTURE=/tmp/fieldtrace-public-issue-38.evtx \
 - `v0.1.0` wheel과 source archive를 빌드하고 MIT 라이선스 포함 여부를 확인했다.
   새 Python 3.12 venv에서 로컬 wheelhouse만 사용한 `--no-index` 설치, 패키지 버전
   `0.1.0`, CLI 도움말, `doctor`의 SQLite WAL round-trip을 확인했다.
+
+## README 사용자 문서 보강(2026-09-09)
+
+- README를 한국어 사용자 안내서로 확장했다. 제품 목적, 지원 환경·형식, 분석 범위,
+  기술 스택과 모듈 경계, Ubuntu/WSL 기본 도구, uv 소스 설치, private GitHub Release
+  wheel 설치, TShark와 python-evtx 역할을 구분해 기록했다.
+- 메뉴와 quick/full/custom 프로필, 모든 CLI 명령·분석 task 키, TOML 설정, 사례 폴더와
+  증거 위치, 오프라인 wheelhouse 반입·격리 리허설, 종료 코드, 장애 대응, 보안 원칙과
+  알려진 제약을 실제 구현 기준으로 설명했다.
+- README 대표 명령 그대로 합성 샘플 폴더 full 분석→`FLAG{` literal 검색→timeline→
+  자체 포함 HTML 보고서 생성을 재현했다. 기본 suite는 `79 passed, 2 skipped`, 임시
+  TShark 4.2.2와 공개 EVTX fixture 포함 suite는 `81 passed`였다. Ruff, compileall,
+  shell syntax, `uv lock --check`, `git diff --check`도 통과했다.
+- 런타임 코드, 패키지 버전과 SQLite 계약은 바꾸지 않았다. 이미 발행한 `v0.1.0`
+  태그와 첨부 파일은 그대로 보존한다.
 
 ## 남은 제약과 다음 작업
 
