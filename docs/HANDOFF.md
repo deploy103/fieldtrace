@@ -8,6 +8,8 @@
 - Phase 2 기능·테스트 커밋: `d2b87b1`
 - Phase 3 안정화 작업 브랜치: `feat/phase3-stabilization`
 - Phase 3 기능·테스트 커밋: `c50567c`
+- 최초 GitHub Release: `v0.1.0` <https://github.com/deploy103/fieldtrace/releases/tag/v0.1.0>
+  (안정화 브랜치 HEAD 기준 wheel, source archive, SHA-256 첨부)
 - Phase 1 Draft PR: `#1` <https://github.com/deploy103/fieldtrace/pull/1>
   (`main` ← `feat/codex-foundation`, OPEN/DRAFT, 자동 병합하지 않음)
 - Phase 2 stacked Draft PR: `#2` <https://github.com/deploy103/fieldtrace/pull/2>
@@ -109,6 +111,21 @@ uv run python -m compileall -q src/fieldtrace
 git diff --check
 ```
 
+릴리스 산출물 재현과 설치 확인:
+
+```bash
+uv build
+sha256sum dist/fieldtrace_ctf-0.1.0-py3-none-any.whl \
+  dist/fieldtrace_ctf-0.1.0.tar.gz
+python3.12 -m venv /tmp/fieldtrace-release-check
+/tmp/fieldtrace-release-check/bin/pip install --no-index \
+  --find-links ./wheelhouse \
+  dist/fieldtrace_ctf-0.1.0-py3-none-any.whl
+/tmp/fieldtrace-release-check/bin/python -c \
+  'import fieldtrace; print(fieldtrace.__version__)'
+/tmp/fieldtrace-release-check/bin/fieldtrace doctor
+```
+
 Phase 3 대형/오프라인 재현:
 
 ```bash
@@ -207,6 +224,9 @@ env FIELDTRACE_EVTX_ISSUE38_FIXTURE=/tmp/fieldtrace-public-issue-38.evtx \
   TCP stream 회귀를 다시 통과했다. SHA-256을 확인한 공개 `issue_38.evtx`도 실제
   python-evtx로 다시 통과했다. 두 통합 자료를 모두 지정한 전체 suite는 `81 passed`,
   시스템 TShark/외부 EVTX fixture가 없는 기본 환경은 `79 passed, 2 skipped`이다.
+- `v0.1.0` wheel과 source archive를 빌드하고 MIT 라이선스 포함 여부를 확인했다.
+  새 Python 3.12 venv에서 로컬 wheelhouse만 사용한 `--no-index` 설치, 패키지 버전
+  `0.1.0`, CLI 도움말, `doctor`의 SQLite WAL round-trip을 확인했다.
 
 ## 남은 제약과 다음 작업
 
