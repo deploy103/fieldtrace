@@ -90,12 +90,20 @@ FieldTrace는 실시간 캡처 권한이 필요하지 않습니다. 설치 질�
 않습니다.
 
 ```bash
-./scripts/export-requirements.sh requirements.lock.txt
-uv build
-python3 -m pip download --only-binary=:all: \
-  --requirement requirements.lock.txt --dest wheelhouse
-cp dist/fieldtrace_ctf-*.whl wheelhouse/
+./scripts/prepare-wheelhouse.sh ./wheelhouse
 ```
+
+스크립트는 잠금 목록과 FieldTrace wheel을 만들고, wheel이 배포되지 않은 잠긴
+의존성도 온라인 단계에서 wheel로 빌드합니다. 준비가 끝나면 같은 장비에서 네트워크
+차단 리허설을 실행합니다.
+
+```bash
+./scripts/rehearse-offline.sh ./wheelhouse
+```
+
+두 번째 명령은 Linux network namespace를 분리한 새 가상환경에서 `--no-index`
+설치, 합성 로그 분석·검색, HTML 보고서 생성을 확인합니다. namespace 생성 권한이
+없으면 성공을 주장하지 않고 종료합니다.
 
 저장소, `wheelhouse/`, TShark 시스템 패키지와 의존성을 반입합니다. 오프라인
 장비에서는 새 가상환경을 만들어 로컬 wheel만 설치합니다.
@@ -119,3 +127,11 @@ uv run ruff check .
 실제 TShark 통합 검증은 `tshark`가 설치된 환경에서만 성공으로 간주합니다.
 자세한 구조는 `docs/ARCHITECTURE.md`, 현장 흐름은 `docs/FIELD_GUIDE.md`,
 현재 구현과 알려진 한계는 `docs/HANDOFF.md`를 참고하세요.
+
+대형 합성 로그의 스트리밍 성능은 다음처럼 재측정할 수 있습니다. 이 측정에는 외부
+TShark 프로세스의 RSS가 포함되지 않으며 결과 JSON에 그 사실을 표시합니다.
+
+```bash
+uv run python scripts/benchmark-large-log.py --size-gib 1 --rss-limit-mib 512
+uv run python scripts/benchmark-large-pcap.py --size-gib 1 --rss-limit-mib 512
+```

@@ -6,11 +6,13 @@
 - Phase 1 보존 브랜치: `feat/codex-foundation`, 기준 커밋 `9132c97`
 - Phase 2 작업 브랜치: `feat/codex-phase2` (`9132c97`에서 분기)
 - Phase 2 기능·테스트 커밋: `d2b87b1`
+- Phase 3 안정화 작업 브랜치: `feat/phase3-stabilization`
+- Phase 3 기능·테스트 커밋: `c50567c`
 - Phase 1 Draft PR: `#1` <https://github.com/deploy103/fieldtrace/pull/1>
   (`main` ← `feat/codex-foundation`, OPEN/DRAFT, 자동 병합하지 않음)
 - Phase 2 stacked Draft PR: `#2` <https://github.com/deploy103/fieldtrace/pull/2>
   (`feat/codex-foundation` ← `feat/codex-phase2`, OPEN/DRAFT, 자동 병합하지 않음)
-- 현재 구현 범위: `요구사항.md` Phase 1과 Phase 2
+- 현재 구현 범위: `요구사항.md` Phase 1·2와 Phase 3의 Ubuntu/WSL 안정화 대부분
 
 이 문서는 자기 자신을 포함하는 최종 커밋 해시를 주장하지 않는다. 아래 명령으로
 현재 HEAD와 검증 상태를 확인한다.
@@ -107,6 +109,15 @@ uv run python -m compileall -q src/fieldtrace
 git diff --check
 ```
 
+Phase 3 대형/오프라인 재현:
+
+```bash
+uv run python scripts/benchmark-large-log.py --size-gib 1 --rss-limit-mib 512
+uv run python scripts/benchmark-large-pcap.py --size-gib 1 --rss-limit-mib 512
+./scripts/prepare-wheelhouse.sh ./wheelhouse
+./scripts/rehearse-offline.sh ./wheelhouse
+```
+
 실제 TShark 4.2.2 임시 로컬 경로가 남아 있는 현재 WSL 세션:
 
 ```bash
@@ -159,6 +170,44 @@ env FIELDTRACE_EVTX_ISSUE38_FIXTURE=/tmp/fieldtrace-public-issue-38.evtx \
 - 로컬 TShark 4.2.2와 공개 EVTX fixture를 모두 지정한 환경: `66 passed`
 - Ruff, compileall, `uv lock --check`, `git diff --check`: 통과
 
+## Phase 3 현장 안정화 진행(2026-09-09)
+
+- 작업 브랜치: `feat/phase3-stabilization` (`feat/codex-phase2`에서 분기)
+- 동일 사례 분석 단일-writer 잠금, 중단된 `running` run의 `failed/partial` 복구와
+  `recovery` 진단을 추가했다. SQLite lock/busy, disk full, read-only, 손상 오류는
+  단계·이유·다음 행동이 있는 현장 오류로 분류한다.
+- 보고서와 파생 파일을 `.part` 임시 파일→`fsync`→원자 교체로 저장한다. 실패 시 기존
+  보고서를 보존하고 부분 파일을 제거한다.
+- 외부 runner가 시작 전 취소를 확인하고 HOME/XDG_CONFIG_HOME을 호출자 override보다
+  우선 격리한다. stdout/stderr 제한, timeout, 취소, 격리 HOME 테스트를 추가했다.
+- `doctor`가 사례 폴더에서 SQLite WAL 쓰기·읽기 round-trip을 실제 확인한다. 파일 선택
+  메뉴의 `d: 문제 해결`에서 동일 진단과 다음 행동을 바로 볼 수 있다.
+- EVTX 프로세스 연결 캐시에 GUID 50,000개, PID 50,000개, PID별 이력 16개 제한을
+  두고 제거 발생 시 부분 분석으로 표시한다. 교차 자료 입력 row는 스트리밍한다.
+- 4 MiB 비후보 줄로 후보 추출기 단축 경로를 회귀 검증했다. 1 GiB/64 KiB 줄 합성
+  UTF-8 텍스트 full 분석은 WSL2 Ubuntu 24.04.4, Python 3.12.3에서 55.294초,
+  peak RSS 60.81 MiB, 16,384줄, 실패 0, complete였다. TShark 프로세스는 포함하지
+  않았다. 최적화 전 같은 입력은 quick 30초 제한에도 603.989초가 걸린 실제 결함이었고
+  이를 수정했다.
+- 1.00005 GiB 합성 PCAP(65,535바이트 패딩 DNS frame 16,381개)을 실제 임시
+  TShark 4.2.2로 full 분석했다. 201.297초, FieldTrace peak 63.74 MiB, TShark peak
+  145.88 MiB, 동시 peak의 보수적 합산 상한 209.61 MiB, 이벤트 32,762건, 실패 0,
+  complete였다. 외부 TShark를 포함한 RSS 목표 512 MiB 이하를 충족했다.
+- 분석 직후 결과 화면은 전체 event를 RAM에 올리지 않고 집계와 후보/진단 각 200개만
+  조회한다. 생략 여부와 전체 결과 확인 방법을 표시한다. 메뉴 timeline은 500개,
+  CLI 기본 timeline은 1,000개로 제한했다.
+- `/tmp/fieldtrace-phase3-wheelhouse`에서 잠긴 wheelhouse를 준비하고 Linux network
+  namespace에서 새 venv `pip --no-index` 설치→doctor→합성 로그 full 분석→`FLAG{`
+  검색→self-contained HTML 생성까지 통과했다. 준비 과정에서 wheel 미배포
+  `hexdump 3.3` 때문에 기존 `--only-binary` 절차가 실패하는 것을 발견해 온라인에서
+  모든 잠긴 의존성을 wheel로 빌드하도록 고쳤다.
+- 사례 잠금/중단 복구/SQLite 오류/원자 저장/긴 줄/runner/결과 화면/문제 해결 메뉴 등
+  안정화 회귀 테스트 16개를 추가했다.
+- 임시 Ubuntu 패키지로 TShark 4.2.2를 `/tmp`에서 실행해 실제 DNS PCAP, HTTP PCAPNG,
+  TCP stream 회귀를 다시 통과했다. SHA-256을 확인한 공개 `issue_38.evtx`도 실제
+  python-evtx로 다시 통과했다. 두 통합 자료를 모두 지정한 전체 suite는 `81 passed`,
+  시스템 TShark/외부 EVTX fixture가 없는 기본 환경은 `79 passed, 2 skipped`이다.
+
 ## 남은 제약과 다음 작업
 
 - WSL에서 `/mnt/c/Windows/System32/winevt/Logs/*.evtx` 접근은 권한 거부된다. 권한을
@@ -169,7 +218,11 @@ env FIELDTRACE_EVTX_ISSUE38_FIXTURE=/tmp/fieldtrace-public-issue-38.evtx \
   자동 결정, 다른 프로토콜 객체, 자동 실행은 지원하지 않는다.
 - TCP 재조립의 재전송·순서·누락 처리는 TShark에 맡기며 FieldTrace는 완전 복원을
   주장하지 않는다. 상세 보기는 현재 앞 5개 stream으로 제한된다.
-- Phase 3의 1GB급 RSS/시간 측정, disk full/SQLite lock/대형 손상 자료, Kali,
-  실제 네트워크 차단 wheelhouse 설치 리허설은 아직 수행하지 않았다.
-- 다음 작업은 새 분석 대상을 늘리기보다 위 Phase 3 현장 안정화와 다중 패킷·누락
-  PCAP fixture 보강을 우선한다.
+- Kali는 아직 검증하지 않았다. 시스템 TShark는 설치하지 않았고 `/tmp`에 푼 Ubuntu
+  24.04 패키지로 검증했다. 다른 TShark 버전과 Kali 패키지는 지원 확정하지 않는다.
+- 실제 filesystem을 가득 채우지 않고 SQLite disk-full 오류 주입, 원자 쓰기 실패,
+  4 MiB 긴 줄을 검증했다. 대형 손상 EVTX/PCAP과 다중 패킷·재전송·누락 PCAP fixture는
+  추가 보강이 필요하다.
+- 일반 검색/timeline은 제한할 수 있지만 전체 JSON/HTML/CSV 보고서와 상관 결과는 큰
+  사례에서 결과 크기만큼 메모리를 사용할 수 있다. 보고서 스트리밍/페이지 제한은 다음
+  안정화 우선순위다.
