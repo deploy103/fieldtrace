@@ -1,0 +1,2131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="FieldTrace 결과에서 정답이 바로 보이지 않을 때 사용하는 오프라인 문제풀이 가이드">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="color-scheme" content="dark light">
+  <title>FieldTrace 문제풀이 플레이북</title>
+  <style>
+    :root {
+      --bg: #071017;
+      --bg-soft: #0b1620;
+      --panel: rgba(15, 29, 40, 0.92);
+      --panel-strong: #112331;
+      --line: #244253;
+      --line-soft: rgba(108, 153, 174, 0.2);
+      --text: #e8f1f5;
+      --muted: #9fb4bf;
+      --accent: #5eead4;
+      --accent-strong: #2dd4bf;
+      --accent-soft: rgba(45, 212, 191, 0.12);
+      --blue: #7dd3fc;
+      --blue-soft: rgba(125, 211, 252, 0.11);
+      --warn: #fbbf24;
+      --warn-soft: rgba(251, 191, 36, 0.12);
+      --danger: #fb7185;
+      --danger-soft: rgba(251, 113, 133, 0.12);
+      --ok: #86efac;
+      --shadow: 0 22px 70px rgba(0, 0, 0, 0.28);
+      --radius: 20px;
+      --radius-sm: 12px;
+      --sidebar: 278px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", Inter, system-ui, sans-serif;
+    }
+
+    html[data-theme="light"] {
+      --bg: #edf4f3;
+      --bg-soft: #e2ecea;
+      --panel: rgba(255, 255, 255, 0.94);
+      --panel-strong: #ffffff;
+      --line: #bed0d2;
+      --line-soft: rgba(45, 86, 96, 0.15);
+      --text: #11242b;
+      --muted: #516a73;
+      --accent: #0f766e;
+      --accent-strong: #0d9488;
+      --accent-soft: rgba(13, 148, 136, 0.1);
+      --blue: #0369a1;
+      --blue-soft: rgba(3, 105, 161, 0.08);
+      --warn: #a16207;
+      --warn-soft: rgba(161, 98, 7, 0.09);
+      --danger: #be123c;
+      --danger-soft: rgba(190, 18, 60, 0.08);
+      --ok: #15803d;
+      --shadow: 0 22px 60px rgba(34, 67, 72, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 24px;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 88% 3%, rgba(45, 212, 191, 0.1), transparent 27rem),
+        radial-gradient(circle at 4% 50%, rgba(125, 211, 252, 0.07), transparent 24rem),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.72;
+      word-break: keep-all;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background-image:
+        linear-gradient(var(--line-soft) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 82%);
+      content: "";
+      opacity: 0.28;
+      pointer-events: none;
+    }
+
+    a {
+      color: var(--accent);
+      text-underline-offset: 0.22em;
+    }
+
+    a:hover {
+      color: var(--blue);
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--warn);
+      outline-offset: 3px;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 100;
+      padding: 10px 14px;
+      transform: translateY(-150%);
+      border-radius: 10px;
+      background: var(--accent);
+      color: #041313;
+      font-weight: 800;
+    }
+
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 26px 20px;
+      overflow-y: auto;
+      border-right: 1px solid var(--line-soft);
+      background: rgba(5, 14, 21, 0.76);
+      backdrop-filter: blur(16px);
+    }
+
+    html[data-theme="light"] .sidebar {
+      background: rgba(240, 247, 246, 0.82);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 26px;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 46px;
+      height: 46px;
+      place-items: center;
+      border: 1px solid rgba(94, 234, 212, 0.45);
+      border-radius: 14px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.92rem;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      box-shadow: inset 0 0 24px rgba(45, 212, 191, 0.08);
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 1rem;
+      letter-spacing: 0.01em;
+    }
+
+    .brand small {
+      display: block;
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .nav-label {
+      margin: 22px 10px 8px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 4px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .nav-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 11px;
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 650;
+      text-decoration: none;
+      transition: 160ms ease;
+    }
+
+    .nav-list a::before {
+      width: 6px;
+      height: 6px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      content: "";
+    }
+
+    .nav-list a:hover,
+    .nav-list a.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .nav-list a.active::before {
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .sidebar-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .ghost-button {
+      min-height: 40px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 750;
+    }
+
+    .ghost-button:hover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .offline-badge {
+      margin-top: 16px;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .offline-badge strong {
+      color: var(--ok);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 54px 0 100px;
+    }
+
+    .hero {
+      position: relative;
+      padding: clamp(30px, 6vw, 72px);
+      overflow: hidden;
+      border: 1px solid var(--line-soft);
+      border-radius: 30px;
+      background:
+        linear-gradient(135deg, rgba(45, 212, 191, 0.13), transparent 42%),
+        var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      position: absolute;
+      right: -80px;
+      bottom: -110px;
+      width: 360px;
+      height: 360px;
+      border: 1px solid rgba(94, 234, 212, 0.18);
+      border-radius: 50%;
+      box-shadow:
+        0 0 0 42px rgba(94, 234, 212, 0.025),
+        0 0 0 86px rgba(94, 234, 212, 0.018);
+      content: "";
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 18px;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      width: 24px;
+      height: 1px;
+      background: currentColor;
+      content: "";
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.25;
+      text-wrap: balance;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(2.4rem, 6vw, 5.2rem);
+      letter-spacing: -0.065em;
+    }
+
+    h1 span {
+      color: var(--accent);
+    }
+
+    .hero-lead {
+      max-width: 720px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: clamp(1rem, 1.8vw, 1.18rem);
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    .primary-link,
+    .secondary-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-weight: 850;
+      text-decoration: none;
+    }
+
+    .primary-link {
+      background: var(--accent);
+      color: #031a18;
+      box-shadow: 0 8px 26px rgba(45, 212, 191, 0.2);
+    }
+
+    .primary-link:hover {
+      background: var(--blue);
+      color: #031419;
+    }
+
+    .secondary-link {
+      border: 1px solid var(--line);
+      color: var(--text);
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      max-width: 740px;
+      margin-top: 42px;
+    }
+
+    .stat {
+      padding: 16px;
+      border: 1px solid var(--line-soft);
+      border-radius: 14px;
+      background: rgba(5, 14, 21, 0.28);
+    }
+
+    html[data-theme="light"] .stat {
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 1.1rem;
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    section {
+      margin-top: 86px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.55fr);
+      gap: 32px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .section-kicker {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      font-weight: 850;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(1.75rem, 4vw, 3rem);
+      letter-spacing: -0.045em;
+    }
+
+    .section-head > p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .principle {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 16px;
+      margin-top: 24px;
+      padding: 20px;
+      border: 1px solid rgba(94, 234, 212, 0.25);
+      border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+    }
+
+    .principle-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #05201d;
+      font-weight: 950;
+    }
+
+    .principle strong {
+      color: var(--accent);
+    }
+
+    .principle p {
+      margin: 2px 0 0;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      counter-reset: flow;
+      list-style: none;
+    }
+
+    .flow li {
+      position: relative;
+      min-height: 150px;
+      padding: 18px 14px;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: var(--panel);
+      counter-increment: flow;
+    }
+
+    .flow li::before {
+      display: grid;
+      width: 27px;
+      height: 27px;
+      margin-bottom: 24px;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      content: counter(flow, decimal-leading-zero);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 900;
+    }
+
+    .flow li:not(:last-child)::after {
+      position: absolute;
+      top: 33px;
+      right: -8px;
+      z-index: 2;
+      width: 14px;
+      height: 1px;
+      background: var(--accent);
+      content: "";
+    }
+
+    .flow strong,
+    .flow span {
+      display: block;
+    }
+
+    .flow strong {
+      font-size: 0.92rem;
+    }
+
+    .flow span {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.5;
+    }
+
+    .search-panel {
+      position: sticky;
+      top: 14px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.14);
+    }
+
+    .search-panel label {
+      flex: 0 0 auto;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 850;
+    }
+
+    .search-panel input {
+      min-width: 0;
+      flex: 1;
+      padding: 8px 10px;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      outline: none;
+    }
+
+    .search-count {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .playbook-card {
+      padding: 22px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+    }
+
+    .playbook-card:hover {
+      border-color: rgba(94, 234, 212, 0.42);
+      transform: translateY(-1px);
+    }
+
+    .card-tag {
+      display: inline-flex;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      font-weight: 850;
+    }
+
+    .card-tag.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .card-tag.danger {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .playbook-card h3 {
+      margin: 15px 0 8px;
+      font-size: 1.12rem;
+    }
+
+    .playbook-card > p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .playbook-card details {
+      margin-top: 16px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    summary {
+      padding-top: 14px;
+      color: var(--accent);
+      font-size: 0.84rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    details ul,
+    details ol {
+      margin-bottom: 0;
+      padding-left: 1.3rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .steps {
+      display: grid;
+      gap: 14px;
+      margin: 0;
+      padding: 0;
+      counter-reset: step;
+      list-style: none;
+    }
+
+    .steps > li {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr);
+      gap: 20px;
+      padding: 24px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: var(--panel);
+      counter-increment: step;
+    }
+
+    .steps > li::before {
+      display: grid;
+      width: 52px;
+      height: 52px;
+      place-items: center;
+      border: 1px solid rgba(94, 234, 212, 0.3);
+      border-radius: 16px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      content: counter(step, decimal-leading-zero);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      font-weight: 900;
+    }
+
+    .step-body h3 {
+      margin: 2px 0 7px;
+      font-size: 1.08rem;
+    }
+
+    .step-body p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .step-body ul {
+      margin: 12px 0 0;
+      padding-left: 1.2rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .command {
+      position: relative;
+      margin-top: 14px;
+      padding: 16px 52px 16px 16px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #050b10;
+      color: #b9f6e9;
+      font-family: var(--mono);
+      font-size: 0.79rem;
+      line-height: 1.65;
+      white-space: pre;
+    }
+
+    html[data-theme="light"] .command {
+      background: #142128;
+      color: #d7fff7;
+    }
+
+    .copy-button {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      padding: 5px 8px;
+      border: 1px solid #31505e;
+      border-radius: 7px;
+      background: #0d1c25;
+      color: #b9cbd2;
+      font-size: 0.68rem;
+      font-weight: 800;
+    }
+
+    .copy-button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: var(--panel);
+      font-size: 0.86rem;
+    }
+
+    .matrix th,
+    .matrix td {
+      padding: 14px 16px;
+      border-right: 1px solid var(--line-soft);
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .matrix th:last-child,
+    .matrix td:last-child {
+      border-right: 0;
+    }
+
+    .matrix tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .matrix th {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+    }
+
+    .matrix td {
+      color: var(--muted);
+    }
+
+    .matrix td:first-child {
+      color: var(--text);
+      font-weight: 780;
+    }
+
+    .case-study {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+      gap: 20px;
+      padding: clamp(22px, 4vw, 38px);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      border-radius: 26px;
+      background:
+        linear-gradient(135deg, var(--warn-soft), transparent 50%),
+        var(--panel);
+    }
+
+    .case-study h3 {
+      margin: 0 0 12px;
+      font-size: 1.5rem;
+    }
+
+    .case-study p {
+      color: var(--muted);
+    }
+
+    .query-anatomy {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .query-part {
+      padding: 13px;
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      background: rgba(5, 14, 21, 0.36);
+    }
+
+    html[data-theme="light"] .query-part {
+      background: rgba(255, 255, 255, 0.6);
+    }
+
+    .query-part small,
+    .query-part code {
+      display: block;
+    }
+
+    .query-part small {
+      color: var(--warn);
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .query-part code {
+      margin-top: 5px;
+      overflow-wrap: anywhere;
+      color: var(--text);
+      font-size: 0.75rem;
+    }
+
+    .proof-chain {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .proof-chain div {
+      padding: 14px;
+      border: 1px solid var(--line-soft);
+      border-radius: 12px;
+      background: var(--bg-soft);
+    }
+
+    .proof-chain b {
+      display: block;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+    }
+
+    .proof-chain span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .warning-box,
+    .info-box {
+      margin-top: 18px;
+      padding: 18px 20px;
+      border-radius: 14px;
+    }
+
+    .warning-box {
+      border: 1px solid rgba(251, 113, 133, 0.3);
+      background: var(--danger-soft);
+    }
+
+    .info-box {
+      border: 1px solid rgba(125, 211, 252, 0.3);
+      background: var(--blue-soft);
+    }
+
+    .warning-box strong {
+      color: var(--danger);
+    }
+
+    .info-box strong {
+      color: var(--blue);
+    }
+
+    .warning-box p,
+    .info-box p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 0.87rem;
+    }
+
+    .format-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .format-card {
+      padding: 20px;
+      border: 1px solid var(--line-soft);
+      border-radius: 16px;
+      background: var(--panel);
+    }
+
+    .format-card h3 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+
+    .format-card ul {
+      margin: 0;
+      padding-left: 1.15rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .worksheet {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      padding: clamp(20px, 4vw, 34px);
+      border: 1px solid var(--line-soft);
+      border-radius: 24px;
+      background: var(--panel);
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 760;
+    }
+
+    .field input,
+    .field textarea {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg-soft);
+      color: var(--text);
+    }
+
+    .field textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    .worksheet-actions {
+      display: flex;
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      gap: 9px;
+    }
+
+    .action-button {
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .action-button.secondary {
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .local-note {
+      grid-column: 1 / -1;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .gate-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .gate {
+      padding: 22px;
+      border: 1px solid var(--line-soft);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+
+    .gate b {
+      display: inline-flex;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+    }
+
+    .gate.low b {
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .gate.medium b {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .gate.high b {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .gate h3 {
+      margin: 14px 0 8px;
+      font-size: 1.05rem;
+    }
+
+    .gate p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .check {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 11px;
+      background: var(--bg-soft);
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .check input {
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+      accent-color: var(--accent-strong);
+    }
+
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .progress-track {
+      height: 8px;
+      flex: 1;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--bg-soft);
+    }
+
+    .progress-bar {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width 180ms ease;
+    }
+
+    .progress-label {
+      min-width: 72px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      text-align: right;
+    }
+
+    footer {
+      margin-top: 90px;
+      padding: 30px 0 10px;
+      border-top: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    footer strong {
+      color: var(--text);
+    }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 80;
+      max-width: min(360px, calc(100vw - 40px));
+      padding: 12px 15px;
+      transform: translateY(140%);
+      border: 1px solid rgba(94, 234, 212, 0.4);
+      border-radius: 12px;
+      background: var(--panel-strong);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      font-size: 0.82rem;
+      opacity: 0;
+      transition: 180ms ease;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    @media (max-width: 1040px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        z-index: 20;
+        display: flex;
+        height: auto;
+        padding: 14px 18px;
+        overflow-x: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .brand {
+        flex: 0 0 auto;
+        margin: 0 18px 0 0;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+      }
+
+      .brand small,
+      .nav-label,
+      .sidebar-actions,
+      .offline-badge {
+        display: none;
+      }
+
+      .nav-list {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+      }
+
+      .nav-list a {
+        white-space: nowrap;
+      }
+
+      main {
+        padding-top: 28px;
+      }
+
+      .flow {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .flow li:not(:last-child)::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      main {
+        width: min(calc(100% - 28px), 1180px);
+      }
+
+      .hero {
+        border-radius: 22px;
+      }
+
+      .hero-stats,
+      .card-grid,
+      .format-grid,
+      .gate-grid,
+      .checklist,
+      .worksheet,
+      .case-study,
+      .section-head {
+        grid-template-columns: 1fr;
+      }
+
+      .field.full,
+      .worksheet-actions,
+      .local-note {
+        grid-column: auto;
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .proof-chain {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .matrix-wrap {
+        overflow-x: auto;
+      }
+
+      .matrix {
+        min-width: 720px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .flow,
+      .hero-stats,
+      .proof-chain {
+        grid-template-columns: 1fr;
+      }
+
+      .steps > li {
+        grid-template-columns: 1fr;
+      }
+
+      .search-panel label,
+      .search-count {
+        display: none;
+      }
+    }
+
+    @media print {
+      :root {
+        --bg: #fff;
+        --panel: #fff;
+        --panel-strong: #fff;
+        --text: #111;
+        --muted: #444;
+        --line: #aaa;
+        --line-soft: #ddd;
+        --accent: #075e54;
+        --accent-soft: #edf8f6;
+      }
+
+      body {
+        background: #fff;
+        font-size: 10pt;
+      }
+
+      body::before,
+      .sidebar,
+      .hero-actions,
+      .search-panel,
+      .copy-button,
+      .worksheet-actions,
+      .toast {
+        display: none !important;
+      }
+
+      .layout {
+        display: block;
+      }
+
+      main {
+        width: 100%;
+        padding: 0;
+      }
+
+      section {
+        margin-top: 34px;
+        break-inside: avoid;
+      }
+
+      .hero,
+      .playbook-card,
+      .steps > li,
+      .case-study,
+      .format-card,
+      .worksheet,
+      .gate {
+        box-shadow: none;
+      }
+
+      details {
+        display: block;
+      }
+
+      details > * {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 바로가기</a>
+  <div class="layout">
+    <aside class="sidebar" aria-label="문서 탐색">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true">FT</span>
+        <span>
+          <strong>FieldTrace</strong>
+          <small>문제풀이 플레이북</small>
+        </span>
+      </a>
+
+      <p class="nav-label">분석 루프</p>
+      <nav>
+        <ul class="nav-list">
+          <li><a href="#decision">판단 흐름</a></li>
+          <li><a href="#symptoms">증상별 대책</a></li>
+          <li><a href="#workflow">단계별 절차</a></li>
+          <li><a href="#reconstruction">숨은 값 재구성</a></li>
+          <li><a href="#blind-sql">Blind SQL 사례</a></li>
+          <li><a href="#formats">포맷별 확인</a></li>
+          <li><a href="#evidence">근거 기록</a></li>
+          <li><a href="#answer-gate">정답 제출 기준</a></li>
+          <li><a href="#limits">파일만으로 못 푸는 경우</a></li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-actions">
+        <button class="ghost-button" id="theme-toggle" type="button">밝기 전환</button>
+        <button class="ghost-button" id="print-guide" type="button">인쇄/PDF</button>
+      </div>
+      <div class="offline-badge">
+        <strong>완전 오프라인 문서</strong><br>
+        외부 폰트·CDN·분석 API·네트워크 요청 없음
+      </div>
+    </aside>
+
+    <main id="main">
+      <header class="hero" id="top">
+        <p class="eyebrow">Offline evidence playbook</p>
+        <h1>정답이 안 보여도<br><span>근거는 남아 있다.</span></h1>
+        <p class="hero-lead">
+          FieldTrace가 답을 바로 표시하지 못했을 때 사용하는 현장용 문제풀이 가이드입니다.
+          결과 0건, 후보 폭증, 부분 분석, 인코딩, 조각난 값, Blind SQL처럼 “값이 원문에
+          그대로 없는” 상황을 증거 위치에서 다시 시작해 해결합니다.
+        </p>
+        <div class="hero-actions">
+          <a class="primary-link" href="#decision">지금 분석 시작</a>
+          <a class="secondary-link" href="README.md">설치·명령 전체 보기</a>
+          <a class="secondary-link" href="docs/FIELD_GUIDE.md">1페이지 현장 가이드</a>
+        </div>
+        <div class="hero-stats" aria-label="핵심 원칙">
+          <div class="stat"><strong>01</strong><span>원본은 읽기 전용</span></div>
+          <div class="stat"><strong>02</strong><span>후보와 정답을 구분</span></div>
+          <div class="stat"><strong>03</strong><span>위치로 재현해 검증</span></div>
+        </div>
+      </header>
+
+      <div class="principle">
+        <span class="principle-mark" aria-hidden="true">!</span>
+        <p>
+          <strong>“검색 결과 없음”은 “정답 없음”이 아닙니다.</strong>
+          정답이 인코딩됐거나 여러 레코드에 나뉘었거나, 참/거짓·응답 크기·시각 차이 같은
+          행동으로만 기록될 수 있습니다. 먼저 분석 범위를 확인하고 그다음 표현 방식을 바꾸세요.
+        </p>
+      </div>
+
+      <section id="decision">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Decision loop</p>
+            <h2>정답까지 가는 6단계</h2>
+          </div>
+          <p>각 단계의 질문에 답하지 못하면 다음 단계로 넘어가지 말고 진단·원문부터 확인합니다.</p>
+        </div>
+        <ol class="flow">
+          <li><strong>입력 확인</strong><span>파일·magic·압축·해시</span></li>
+          <li><strong>범위 확인</strong><span>complete / partial / skip</span></li>
+          <li><strong>신호 축소</strong><span>시각·source·행위별 묶기</span></li>
+          <li><strong>표현 변환</strong><span>decode·조각·비교 결과</span></li>
+          <li><strong>근거 역추적</strong><span>line·frame·record</span></li>
+          <li><strong>정답 판정</strong><span>형식·길이·반증 확인</span></li>
+        </ol>
+      </section>
+
+      <section id="symptoms">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">First response</p>
+            <h2>증상별 대책</h2>
+          </div>
+          <p>지금 보이는 증상을 검색하세요. 카드에는 바로 확인할 항목과 다음 행동이 들어 있습니다.</p>
+        </div>
+        <div class="search-panel">
+          <label for="symptom-search">증상 검색</label>
+          <input id="symptom-search" type="search" placeholder="예: 결과 없음, SQLMap, PCAP, 인코딩, 부분 분석">
+          <span class="search-count" id="search-count" aria-live="polite">9개 표시</span>
+        </div>
+        <div class="card-grid" id="symptom-grid">
+          <article class="playbook-card" data-search="결과 없음 0건 플래그 검색 prefix literal">
+            <span class="card-tag">ZERO RESULT</span>
+            <h3>검색 결과가 0건이다</h3>
+            <p>대소문자보다 먼저 “정답이 원문에 연속 문자열로 존재하는가”를 확인합니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ol>
+                <li>run의 coverage와 진단을 확인합니다.</li>
+                <li>알고 있는 접두사, 핵심 도메인, 계정처럼 짧은 단서로 검색합니다.</li>
+                <li>URL/Base64/Hex 변환 결과와 조각난 문자열을 확인합니다.</li>
+                <li>비교식·응답 크기·시간차로만 값이 드러나는지 봅니다.</li>
+              </ol>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="후보 너무 많음 폭증 sqlmap 공격 요청 노이즈 필터">
+            <span class="card-tag warn">TOO MANY</span>
+            <h3>후보가 너무 많다</h3>
+            <p>후보 개수를 정답 가능성으로 착각하지 말고 반복 캠페인을 하나의 행위로 묶습니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>IP, User-Agent, endpoint, 시간 구간으로 그룹화합니다.</li>
+                <li>완전히 같은 요청이 아니라 “추출 대상 식”과 “문자 위치”를 기준으로 묶습니다.</li>
+                <li>최초 탐색, 본 추출, 종료 확인 구간만 남깁니다.</li>
+                <li>대표 근거와 전체 건수를 함께 기록합니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="partial 부분 분석 quick timeout 제한 손상 실패 skip">
+            <span class="card-tag danger">PARTIAL</span>
+            <h3>부분 분석으로 끝났다</h3>
+            <p>일부 결과가 있다는 뜻이지 전체를 읽었다는 뜻은 아닙니다. 누락 이유를 먼저 분리합니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>quick 예산이면 같은 입력을 full로 다시 분석합니다.</li>
+                <li>손상·긴 줄·외부 도구 오류면 진단의 실패 단계와 위치를 확인합니다.</li>
+                <li>미해석 레코드가 정답 구간인지 원문에서 별도로 확인합니다.</li>
+                <li>완료 결과와 부분 결과를 섞어 “전체 확인”이라고 쓰지 않습니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="형식 미확정 확장자 magic zip 압축 archive encoding">
+            <span class="card-tag warn">INPUT</span>
+            <h3>파일이 안 보이거나 형식이 이상하다</h3>
+            <p>확장자를 바꾸기 전에 magic, 압축 내부 목록과 실제 파일 크기를 확인합니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>메뉴에서 다른 폴더 또는 경로 붙여넣기를 사용합니다.</li>
+                <li>ZIP은 목록·무결성·경로 탈출 여부를 검토한 뒤 임시 폴더에 풉니다.</li>
+                <li>내용과 확장자가 다르면 수동 형식을 지정합니다.</li>
+                <li>텍스트라면 UTF-8/UTF-16 BOM, CP949/EUC-KR 순으로 검토합니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="tshark python-evtx 도구 누락 doctor pcap evtx">
+            <span class="card-tag danger">TOOL MISSING</span>
+            <h3>PCAP 또는 EVTX만 분석되지 않는다</h3>
+            <p>해당 기능의 엔진이 빠졌을 가능성이 큽니다. 다른 형식의 성공과 혼동하지 않습니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li><code>./run.sh doctor</code>로 TShark와 python-evtx를 확인합니다.</li>
+                <li>TShark가 없으면 패킷 분석 완료를 주장하지 않습니다.</li>
+                <li>대회 중 설치하지 말고 준비된 동일 OS용 패키지를 사용합니다.</li>
+                <li>도구 버전과 사용 가능 field를 분석 기록에 남깁니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="정답 원문 없음 blind sql 시간 기반 boolean ascii ord mid substring">
+            <span class="card-tag">DERIVED VALUE</span>
+            <h3>정답 문자열이 원문에 없다</h3>
+            <p>문자열이 아니라 값을 설명하는 관측을 찾습니다. Blind SQL이 대표적인 경우입니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>같은 SELECT 대상과 행을 찾습니다.</li>
+                <li>문자 위치별 비교 임계값과 최종 확인을 순서대로 정렬합니다.</li>
+                <li>ASCII/Unicode 값을 문자로 바꾸고 종료 위치를 확인합니다.</li>
+                <li>복원값, 변환 규칙, 사용한 모든 근거 위치를 함께 보존합니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="시간순 timeline timezone 연도 utc 미상 순서">
+            <span class="card-tag warn">TIME</span>
+            <h3>이벤트 순서가 이상하다</h3>
+            <p>시간대 없는 자료를 UTC로 단정하면 공격 순서와 응답 지연을 잘못 해석할 수 있습니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>timestamp_raw와 timezone_status를 확인합니다.</li>
+                <li>근거가 있을 때만 default_timezone/default_year를 지정합니다.</li>
+                <li>시간 미상 자료는 파일·레코드 순서를 보조 근거로 사용합니다.</li>
+                <li>초 단위 로그에서 1초 지연 하나만으로 참/거짓을 확정하지 않습니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="여러 파일 correlate 상관 ip domain account filename source">
+            <span class="card-tag">CORRELATE</span>
+            <h3>한 파일만 보면 맥락이 끊긴다</h3>
+            <p>여러 자료가 주어졌다면 동일 IP·도메인·계정·파일명을 출발점으로 관측을 묶습니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>모든 입력을 같은 case에 분석합니다.</li>
+                <li>correlate로 둘 이상의 source에 나온 값을 찾습니다.</li>
+                <li>timeline에서 앞뒤 사건을 확인합니다.</li>
+                <li>동일 문자열만으로 동일 공격자나 인과관계를 확정하지 않습니다.</li>
+              </ul>
+            </details>
+          </article>
+
+          <article class="playbook-card" data-search="손상 디스크 잠금 sqlite running 취소 오류 복구 diagnostics">
+            <span class="card-tag danger">RECOVERY</span>
+            <h3>중단·잠금·저장 오류가 났다</h3>
+            <p>새 분석으로 덮기 전에 저장된 부분 결과와 원본 무결성을 확인합니다.</p>
+            <details>
+              <summary>대응 순서</summary>
+              <ul>
+                <li>다른 FieldTrace/SQLite writer를 닫습니다.</li>
+                <li>디스크 여유와 사례 폴더 쓰기 권한을 확인합니다.</li>
+                <li>다음 실행의 interrupted run 복구 진단을 확인합니다.</li>
+                <li>원본 hash_status가 complete인지, 분석 중 size/mtime이 바뀌지 않았는지 봅니다.</li>
+              </ul>
+            </details>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Repeatable workflow</p>
+            <h2>단계별 문제풀이 절차</h2>
+          </div>
+          <p>정답을 빨리 찾는 것보다 같은 결론을 다시 만들 수 있도록 분석 경로를 남기는 절차입니다.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <div class="step-body">
+              <h3>원본 고정과 입력 목록 작성</h3>
+              <p>원본을 수정하지 말고 파일명, 크기, SHA-256, magic을 기록합니다. 압축은 내부 목록과 무결성을 먼저 확인합니다.</p>
+              <div class="command" data-copy>sha256sum ./input/evidence.*
+file ./input/evidence.*
+zipinfo -l ./input/evidence.zip
+unzip -t ./input/evidence.zip</div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>분석 환경 진단</h3>
+              <p>필수 패키지, TShark, 사례 DB 쓰기와 디스크를 확인합니다. 선택 기능 누락을 전체 성공으로 해석하지 않습니다.</p>
+              <div class="command" data-copy>./run.sh doctor</div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>quick으로 지형 파악</h3>
+              <p>형식, 입력 수, 대표 후보와 오류를 먼저 봅니다. 이 단계의 목적은 정답 확정이 아니라 다음 질문을 정하는 것입니다.</p>
+              <div class="command" data-copy>./run.sh analyze ./input \
+  --profile quick \
+  --case ./cases/problem</div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>coverage와 실패 구간 확인</h3>
+              <p>complete인지, quick 예산이나 손상 때문에 partial인지 확인합니다. 정답이 누락 구간에 있을 가능성을 닫지 않습니다.</p>
+              <ul>
+                <li>처리 레코드 수와 실제 줄/패킷/record 수 비교</li>
+                <li>diagnostics의 stage, 이유, 다음 행동 확인</li>
+                <li>hash_status와 원본 변경 여부 확인</li>
+              </ul>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>full 또는 목적별 custom 실행</h3>
+              <p>무작정 모든 변환을 반복하지 말고 형식에 맞는 분석 항목을 선택합니다.</p>
+              <div class="command" data-copy>./run.sh analyze ./input/evidence.log \
+  --profile full \
+  --case ./cases/problem
+
+./run.sh analyze ./input/capture.pcapng \
+  --type pcap \
+  --profile custom \
+  --tasks tcp_streams,object_extraction \
+  --case ./cases/problem</div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>넓게 검색하고 좁게 검증</h3>
+              <p>정답 전체보다 접두사, 테이블명, endpoint, 계정처럼 짧고 설명 가능한 단서를 먼저 찾습니다.</p>
+              <div class="command" data-copy>./run.sh search --case ./cases/problem --text 'FLAG{'
+./run.sh search --case ./cases/problem --text 'information_schema'
+./run.sh search --case ./cases/problem --text 'SLEEP('</div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>행위 단위로 재구성</h3>
+              <p>검색 결과에 값이 없으면 요청 순서, 응답 크기, 지연, 문자 위치, stream 같은 구조를 기준으로 조각을 다시 묶습니다.</p>
+              <ul>
+                <li>같은 source와 시간 구간인가?</li>
+                <li>같은 추출 대상·행·문자 위치인가?</li>
+                <li>재시도와 calibration probe를 제거했는가?</li>
+                <li>값 종료 또는 다음 단계 전환을 확인했는가?</li>
+              </ul>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>원본 위치로 반증</h3>
+              <p>후보를 만든 규칙이 아니라 실제 line, frame, EVTX record를 확인합니다. 다른 해석이 가능한지 함께 기록합니다.</p>
+              <div class="command" data-copy>./run.sh timeline --case ./cases/problem --limit 1000
+./run.sh correlate --case ./cases/problem --min-sources 2
+./run.sh report --case ./cases/problem --format html</div>
+            </div>
+          </li>
+          <li>
+            <div class="step-body">
+              <h3>정답 후보와 한계를 분리해 보고</h3>
+              <p>복원 문자열만 쓰지 말고 입력 hash, 변환 과정, 증거 위치, coverage, 신뢰도와 남은 반례를 함께 제출합니다.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="reconstruction">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Derived evidence</p>
+            <h2>원문에 없는 값 찾기</h2>
+          </div>
+          <p>정답은 파일 안의 연속 문자열일 수도 있지만, 여러 관측을 조합해야만 나타나는 파생값일 수도 있습니다.</p>
+        </div>
+        <div class="matrix-wrap">
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th>표현 방식</th>
+                <th>관측 신호</th>
+                <th>재구성 방법</th>
+                <th>필수 검증</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>URL/Base64/Hex</td>
+                <td><code>%7B</code>, 긴 인코딩 토큰, 16진 바이트</td>
+                <td>깊이와 출력 크기를 제한해 단계별 변환</td>
+                <td>원문→변환 종류→결과 chain 보존</td>
+              </tr>
+              <tr>
+                <td>여러 레코드로 조각남</td>
+                <td>같은 세션·키·순번에 작은 문자열 반복</td>
+                <td>source, 시각, stream, sequence 기준 정렬</td>
+                <td>누락·중복·재전송 표시</td>
+              </tr>
+              <tr>
+                <td>Blind SQL 비교</td>
+                <td><code>ORD(MID(...)) &gt; N</code>, <code>!= N</code></td>
+                <td>대상·행·문자 위치별 비교 경로 복원</td>
+                <td>최종 확인과 다음 위치 전환, 종료 probe</td>
+              </tr>
+              <tr>
+                <td>응답 크기 기반 Boolean</td>
+                <td>같은 요청군에서 특정 status/bytes 두 집단</td>
+                <td>알려진 참/거짓 probe로 집단 의미 결정</td>
+                <td>캐시·오류 페이지·동적 길이 반례</td>
+              </tr>
+              <tr>
+                <td>시간 기반 Boolean</td>
+                <td><code>SLEEP(n)</code> 조건과 요청 간 지연</td>
+                <td>조건, 지연, 다음 요청 시작을 함께 비교</td>
+                <td>초 단위 정밀도·병렬 요청·네트워크 지연 반례</td>
+              </tr>
+              <tr>
+                <td>TCP/HTTP 조각</td>
+                <td>여러 frame의 같은 stream, 분할 body</td>
+                <td>TShark 재조립 결과와 frame을 함께 확인</td>
+                <td>재전송·누락·불완전 복원 표시</td>
+              </tr>
+              <tr>
+                <td>EVTX 연쇄</td>
+                <td>프로세스 생성→네트워크→PowerShell 이벤트</td>
+                <td>ProcessGuid 우선, PID는 시간 범위 내 보조</td>
+                <td>provider/channel, PID 재사용·시각 불확실성</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="blind-sql">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Case pattern</p>
+            <h2>Blind SQL 로그 재구성</h2>
+          </div>
+          <p>이번 유형처럼 플래그가 한 번도 평문으로 기록되지 않은 경우를 일반화한 절차입니다.</p>
+        </div>
+        <div class="case-study">
+          <div>
+            <span class="card-tag warn">현재는 수동 후속 분석 필요</span>
+            <h3>비교식 자체가 문자를 설명한다</h3>
+            <p>
+              SQLMap 계열 로그에는 추출 대상, 행, 문자 위치, 비교값이 요청 URI에 남을 수
+              있습니다. 아래와 같은 최종 검증 뒤 곧바로 다음 문자 위치로 이동했다면
+              해당 실행이 ASCII 67을 후보로 받아들였다는 강한 근거입니다.
+            </p>
+            <div class="command" data-copy>ORD(MID(
+  (SELECT value FROM challenge.flags LIMIT 0,1),
+  1,
+  1
+)) != 67</div>
+            <p>
+              67을 문자로 바꾸면 <code>C</code>입니다. 같은 방식으로 위치 2, 3…을
+              복원하고, 다음 위치에서 <code>&gt; 1</code>도 거짓으로 끝나는 구간을 문자열
+              종료 후보로 봅니다. 예시는 설명용이며 실제 문제 답을 문서에 포함하지 않습니다.
+            </p>
+          </div>
+          <div class="query-anatomy" aria-label="쿼리 해부">
+            <div class="query-part">
+              <small>Target</small>
+              <code>SELECT value FROM challenge.flags</code>
+            </div>
+            <div class="query-part">
+              <small>Row</small>
+              <code>LIMIT 0,1</code>
+            </div>
+            <div class="query-part">
+              <small>Position</small>
+              <code>MID(..., 1, 1)</code>
+            </div>
+            <div class="query-part">
+              <small>Candidate</small>
+              <code>!= 67 → ASCII "C"</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="proof-chain">
+          <div><b>1 / GROUP</b><span>같은 SELECT·row·position을 묶기</span></div>
+          <div><b>2 / ORDER</b><span>원본 line과 timestamp 순으로 정렬</span></div>
+          <div><b>3 / ACCEPT</b><span>최종 비교 뒤 다음 위치 전환 확인</span></div>
+          <div><b>4 / STOP</b><span>빈 다음 문자와 추출 종료 확인</span></div>
+        </div>
+
+        <div class="warning-box">
+          <strong>비교 숫자만 모아서 바로 문자로 바꾸면 안 됩니다.</strong>
+          <p>
+            SQLMap은 calibration, 임의 큰 임계값, 재시도, 이진 탐색을 섞을 수 있습니다.
+            특히 병렬 요청이나 초 단위 timestamp만 있는 로그에서는 지연 하나만으로
+            참/거짓을 정하지 말고 “다음 임계값 선택”과 “다음 문자 이동”을 같이 확인하세요.
+          </p>
+        </div>
+        <div class="info-box">
+          <strong>FieldTrace의 현재 경계</strong>
+          <p>
+            SQL 문법 형태 요청과 원본 line은 찾지만, Blind SQL의 문자별 결과를 자동으로
+            재조립하지는 않습니다. 따라서 후보가 수천 건이면 실패가 아니라 후속 재구성이
+            필요하다는 신호일 수 있습니다.
+          </p>
+        </div>
+      </section>
+
+      <section id="formats">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Format checklist</p>
+            <h2>포맷별 마지막 확인</h2>
+          </div>
+          <p>형식마다 놓치기 쉬운 근거와 수동 후속 분석의 출발점이 다릅니다.</p>
+        </div>
+        <div class="format-grid">
+          <article class="format-card">
+            <h3>웹 접근 로그</h3>
+            <ul>
+              <li>URI raw와 URL decode를 둘 다 확인</li>
+              <li>status와 bytes의 집단 차이 확인</li>
+              <li>User-Agent·endpoint·시간 구간 그룹화</li>
+              <li>SQLMap 문자 위치와 추출 대상 복원</li>
+            </ul>
+          </article>
+          <article class="format-card">
+            <h3>일반 텍스트</h3>
+            <ul>
+              <li>인코딩과 과도한 줄 길이 진단 확인</li>
+              <li>접두사를 알고 있으면 TOML에 추가</li>
+              <li>Base64/Hex/URL chain 깊이 제한</li>
+              <li>line 번호와 원문 preview 대조</li>
+            </ul>
+          </article>
+          <article class="format-card">
+            <h3>OpenSSH / sudo</h3>
+            <ul>
+              <li>성공과 실패를 같은 계정·IP로 비교</li>
+              <li>연도 없는 syslog 시각을 확정하지 않기</li>
+              <li>sudo COMMAND는 표시만 하고 실행 금지</li>
+              <li>웹·PCAP의 IP와 교차 관측</li>
+            </ul>
+          </article>
+          <article class="format-card">
+            <h3>PCAP / PCAPNG</h3>
+            <ul>
+              <li>doctor에서 실제 TShark 확인</li>
+              <li>DNS·HTTP·port를 frame으로 역추적</li>
+              <li>TCP stream 완전성은 unknown으로 유지</li>
+              <li>추출물 hash와 원본 frame 확인</li>
+            </ul>
+          </article>
+          <article class="format-card">
+            <h3>EVTX / Sysmon</h3>
+            <ul>
+              <li>event ID뿐 아니라 provider/channel 확인</li>
+              <li>ProcessGuid 연결을 PID보다 우선</li>
+              <li>record ID와 raw timestamp 보존</li>
+              <li>손상 XML 뒤 레코드가 계속 처리됐는지 확인</li>
+            </ul>
+          </article>
+          <article class="format-card">
+            <h3>ZIP / 묶음 파일</h3>
+            <ul>
+              <li>자동 재귀 해제 대상이 아님</li>
+              <li>항목명·압축률·무결성 먼저 검사</li>
+              <li>절대경로, <code>..</code>, symlink 거부</li>
+              <li>검토 후 별도 임시 폴더에만 해제</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="evidence">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Evidence note</p>
+            <h2>근거 기록 양식</h2>
+          </div>
+          <p>분석 중 메모를 채우고 요약을 복사할 수 있습니다. 입력 내용은 전송하거나 저장하지 않습니다.</p>
+        </div>
+        <form class="worksheet" id="evidence-form">
+          <div class="field">
+            <label for="source-hash">입력 SHA-256</label>
+            <input id="source-hash" name="sourceHash" autocomplete="off" placeholder="64자리 해시">
+          </div>
+          <div class="field">
+            <label for="coverage">분석 범위</label>
+            <input id="coverage" name="coverage" autocomplete="off" placeholder="complete / partial / skipped">
+          </div>
+          <div class="field">
+            <label for="candidate">정답 후보</label>
+            <input id="candidate" name="candidate" autocomplete="off" placeholder="후보 문자열 또는 결론">
+          </div>
+          <div class="field">
+            <label for="confidence">신뢰도와 이유</label>
+            <input id="confidence" name="confidence" autocomplete="off" placeholder="high — 문자별 최종 비교와 종료 확인">
+          </div>
+          <div class="field full">
+            <label for="locations">증거 위치</label>
+            <textarea id="locations" name="locations" placeholder="예: line:120-245 / frame:42 / channel:Security;record:17845"></textarea>
+          </div>
+          <div class="field full">
+            <label for="transforms">변환·재구성 과정과 남은 반례</label>
+            <textarea id="transforms" name="transforms" placeholder="원문 → URL decode → 위치별 ASCII 확인 → 문자열 결합. 병렬 요청 없음 확인."></textarea>
+          </div>
+          <div class="worksheet-actions">
+            <button class="action-button" type="button" id="copy-evidence">요약 복사</button>
+            <button class="action-button secondary" type="reset">입력 지우기</button>
+          </div>
+          <p class="local-note">
+            보안 메모: 이 페이지는 네트워크 요청을 만들지 않습니다. “요약 복사”를 누른
+            경우에만 운영체제 클립보드에 내용이 들어갑니다.
+          </p>
+        </form>
+      </section>
+
+      <section id="answer-gate">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Answer gate</p>
+            <h2>언제 정답이라고 말할까</h2>
+          </div>
+          <p>도구의 finding은 출발점입니다. 제출 전 신뢰도와 반증 가능성을 분리합니다.</p>
+        </div>
+        <div class="gate-grid">
+          <article class="gate low">
+            <b>LOW</b>
+            <h3>형태만 일치</h3>
+            <p>접두사·정규식 또는 의심 규칙에만 일치. 문제 문맥·위치·변환 경로가 부족합니다.</p>
+          </article>
+          <article class="gate medium">
+            <b>MEDIUM</b>
+            <h3>관측과 맥락 일치</h3>
+            <p>원본 위치와 공격/추출 흐름이 맞지만 일부 문자, 순서 또는 종료 근거가 불완전합니다.</p>
+          </article>
+          <article class="gate high">
+            <b>HIGH</b>
+            <h3>재현과 종료 확인</h3>
+            <p>독립적으로 같은 값을 복원하고 모든 문자·종료·입력 hash와 반례를 확인했습니다.</p>
+          </article>
+        </div>
+
+        <div class="checklist" id="answer-checklist">
+          <label class="check"><input type="checkbox">입력 파일과 SHA-256을 기록했다</label>
+          <label class="check"><input type="checkbox">coverage와 실패·생략을 확인했다</label>
+          <label class="check"><input type="checkbox">후보의 원본 위치로 돌아갔다</label>
+          <label class="check"><input type="checkbox">변환·조합 순서를 재현했다</label>
+          <label class="check"><input type="checkbox">문자열 형식과 길이를 확인했다</label>
+          <label class="check"><input type="checkbox">다른 해석과 누락 가능성을 검토했다</label>
+          <label class="check"><input type="checkbox">실제 정답과 추정 신호를 구분했다</label>
+          <label class="check"><input type="checkbox">보고서에 도구 버전과 한계를 남겼다</label>
+        </div>
+        <div class="progress-row">
+          <div class="progress-track" aria-hidden="true"><div class="progress-bar" id="progress-bar"></div></div>
+          <span class="progress-label" id="progress-label">0 / 8</span>
+        </div>
+      </section>
+
+      <section id="limits">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Stop conditions</p>
+            <h2>파일만으로 풀 수 없는 경우</h2>
+          </div>
+          <p>추측으로 빈칸을 채우지 말고 필요한 추가 입력을 구체적으로 식별하는 것도 올바른 결론입니다.</p>
+        </div>
+        <div class="card-grid">
+          <article class="playbook-card">
+            <span class="card-tag danger">MISSING CONTEXT</span>
+            <h3>문제 지문·정답 형식이 없다</h3>
+            <p>무엇을 답해야 하는지 특정할 수 없습니다. 파일에서 관측 가능한 사실과 추정 가능한 후보까지만 보고합니다.</p>
+          </article>
+          <article class="playbook-card">
+            <span class="card-tag danger">NOT RECORDED</span>
+            <h3>필요한 값이 애초에 기록되지 않았다</h3>
+            <p>응답 본문, 패킷 payload, EVTX 채널 등이 수집되지 않았다면 남은 로그만으로 복원할 수 없음을 명시합니다.</p>
+          </article>
+          <article class="playbook-card">
+            <span class="card-tag danger">TRUNCATED</span>
+            <h3>로그가 중간에서 끝났다</h3>
+            <p>문자 일부까지만 추출됐거나 종료 probe가 없으면 부분 문자열과 마지막 확정 위치까지만 보고합니다.</p>
+          </article>
+          <article class="playbook-card">
+            <span class="card-tag danger">ENCRYPTED</span>
+            <h3>암호·키가 제공되지 않았다</h3>
+            <p>암호 우회나 무차별 대입을 자동 수행하지 않습니다. 제공된 키·힌트·허용 범위를 요청합니다.</p>
+          </article>
+          <article class="playbook-card">
+            <span class="card-tag warn">AMBIGUOUS</span>
+            <h3>둘 이상의 값이 같은 근거를 만족한다</h3>
+            <p>한 값을 정답으로 단정하지 말고 후보별 근거와 추가로 필요한 판별 자료를 나눠 기록합니다.</p>
+          </article>
+          <article class="playbook-card">
+            <span class="card-tag warn">OUT OF SCOPE</span>
+            <h3>지원하지 않는 포맷이다</h3>
+            <p>형식을 억지로 텍스트로 읽지 않습니다. 안전한 오프라인 parser와 검증 fixture가 필요한 후속 작업으로 넘깁니다.</p>
+          </article>
+        </div>
+        <div class="info-box">
+          <strong>요청해야 할 추가 자료를 정확히 쓰세요.</strong>
+          <p>
+            “자료가 부족함” 대신 “17:52 이후 access.log”, “해당 tcp.stream의 양방향
+            packet”, “Security 채널 EVTX record 17846 이후”, “문제의 flag prefix와
+            시간대”처럼 다음 분석을 가능하게 하는 입력을 지정합니다.
+          </p>
+        </div>
+      </section>
+
+      <footer>
+        <strong>FieldTrace 문제풀이 플레이북</strong><br>
+        이 문서는 정적 HTML이며 외부 리소스나 런타임 분석 API를 사용하지 않습니다.
+        실제 증거와 추출 결과는 저장소에 커밋하지 마세요. 상세 설치와 지원 범위는
+        <a href="README.md">README</a>, 현재 검증 상태는
+        <a href="docs/HANDOFF.md">HANDOFF</a>를 확인하세요.
+      </footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.querySelector("#theme-toggle");
+      const printButton = document.querySelector("#print-guide");
+      const toast = document.querySelector("#toast");
+      let toastTimer;
+
+      const announce = (message) => {
+        toast.textContent = message;
+        toast.classList.add("show");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove("show"), 2200);
+      };
+
+      const preferredLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+      root.dataset.theme = preferredLight ? "light" : "dark";
+
+      themeButton?.addEventListener("click", () => {
+        root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+        announce(root.dataset.theme === "dark" ? "어두운 화면으로 전환했습니다." : "밝은 화면으로 전환했습니다.");
+      });
+
+      printButton?.addEventListener("click", () => window.print());
+
+      const copyText = async (value) => {
+        try {
+          await navigator.clipboard.writeText(value);
+          announce("클립보드에 복사했습니다.");
+        } catch {
+          const area = document.createElement("textarea");
+          area.value = value;
+          area.style.position = "fixed";
+          area.style.opacity = "0";
+          document.body.append(area);
+          area.select();
+          const copied = document.execCommand("copy");
+          area.remove();
+          announce(copied ? "클립보드에 복사했습니다." : "복사하지 못했습니다. 직접 선택해 복사하세요.");
+        }
+      };
+
+      document.querySelectorAll("[data-copy]").forEach((block) => {
+        const commandText = block.textContent.trim();
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "copy-button";
+        button.textContent = "복사";
+        button.setAttribute("aria-label", "명령 복사");
+        button.addEventListener("click", () => copyText(commandText));
+        block.append(button);
+      });
+
+      const search = document.querySelector("#symptom-search");
+      const cards = [...document.querySelectorAll("#symptom-grid .playbook-card")];
+      const count = document.querySelector("#search-count");
+      const filterCards = () => {
+        const needle = search.value.trim().toLocaleLowerCase("ko");
+        let visible = 0;
+        cards.forEach((card) => {
+          const haystack = `${card.dataset.search || ""} ${card.textContent}`.toLocaleLowerCase("ko");
+          const matched = !needle || haystack.includes(needle);
+          card.hidden = !matched;
+          if (matched) visible += 1;
+        });
+        count.textContent = `${visible}개 표시`;
+      };
+      search?.addEventListener("input", filterCards);
+
+      const form = document.querySelector("#evidence-form");
+      document.querySelector("#copy-evidence")?.addEventListener("click", () => {
+        const data = new FormData(form);
+        const summary = [
+          "# FieldTrace 근거 메모",
+          `- 입력 SHA-256: ${data.get("sourceHash") || "(미기록)"}`,
+          `- 분석 범위: ${data.get("coverage") || "(미기록)"}`,
+          `- 정답 후보: ${data.get("candidate") || "(미기록)"}`,
+          `- 신뢰도: ${data.get("confidence") || "(미기록)"}`,
+          `- 증거 위치: ${data.get("locations") || "(미기록)"}`,
+          `- 변환·반례: ${data.get("transforms") || "(미기록)"}`
+        ].join("\n");
+        copyText(summary);
+      });
+
+      const checks = [...document.querySelectorAll("#answer-checklist input")];
+      const progressBar = document.querySelector("#progress-bar");
+      const progressLabel = document.querySelector("#progress-label");
+      const updateProgress = () => {
+        const done = checks.filter((check) => check.checked).length;
+        progressBar.style.width = `${(done / checks.length) * 100}%`;
+        progressLabel.textContent = `${done} / ${checks.length}`;
+      };
+      checks.forEach((check) => check.addEventListener("change", updateProgress));
+
+      const navLinks = [...document.querySelectorAll(".nav-list a")];
+      const sections = navLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
+      if ("IntersectionObserver" in window) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            navLinks.forEach((link) => {
+              link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`);
+            });
+          });
+        }, { rootMargin: "-20% 0px -68% 0px" });
+        sections.forEach((section) => observer.observe(section));
+      }
+    })();
+  </script>
+</body>
+</html>
