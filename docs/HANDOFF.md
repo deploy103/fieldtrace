@@ -245,6 +245,28 @@ env FIELDTRACE_EVTX_ISSUE38_FIXTURE=/tmp/fieldtrace-public-issue-38.evtx \
 - 런타임 코드, 패키지 버전과 SQLite 계약은 바꾸지 않았다. 이미 발행한 `v0.1.0`
   태그와 첨부 파일은 그대로 보존한다.
 
+## 오프라인 문제풀이 플레이북(2026-09-10)
+
+- 루트 `index.html`에 외부 CDN·폰트·이미지·API 없이 작동하는 반응형 한국어
+  문제풀이 플레이북을 추가했다. Content Security Policy로 네트워크 연결과 외부
+  리소스를 차단하고, 밝기 전환·인쇄·증상 검색·명령 복사·제출 체크리스트를 제공한다.
+- 결과 0건, 후보 폭증, 부분 분석, 형식·인코딩, 도구 누락, 시간대, 교차 자료, 저장
+  오류별 대책과 입력 확인→범위 확인→신호 축소→표현 변환→근거 역추적→정답 판정
+  흐름을 문서화했다.
+- 정답이 원문에 없는 경우의 URL/Base64/Hex, 레코드 조각, 응답 크기·시간 기반
+  Boolean, TCP/HTTP 조각, EVTX 연쇄 재구성을 설명했다. Blind SQL은 실제 문제의
+  파일·정답을 포함하지 않고 일반화한 `challenge.flags` 예시로 대상·행·문자 위치·
+  최종 ASCII 확인·종료 probe를 검증하는 방법을 기록했다.
+- 브라우저 내 근거 기록 양식은 내용을 전송·영구 저장하지 않으며 사용자가 명시적으로
+  누른 경우에만 클립보드로 복사한다. 실제 문제 자료가 있는 `example_problem/`은
+  `.gitignore`에 추가해 Git 추적에서 제외했다.
+- README와 1페이지 현장 가이드에서 새 페이지를 연결했다. HTML 태그 중첩, ID·내부
+  링크·form label, 내장 JavaScript 문법, 외부 리소스 부재를 자동 검사하고 Edge
+  headless 1440×1100과 480×900 렌더링으로 데스크톱·좁은 화면을 확인했다. 기본
+  suite는 `79 passed, 2 skipped`, 임시 TShark 4.2.2와 공개 EVTX fixture 포함
+  suite는 `81 passed`였고 Ruff, compileall, shell syntax, `uv lock --check`,
+  `git diff --check`도 통과했다.
+
 ## 남은 제약과 다음 작업
 
 - WSL에서 `/mnt/c/Windows/System32/winevt/Logs/*.evtx` 접근은 권한 거부된다. 권한을

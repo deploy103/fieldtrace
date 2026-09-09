@@ -21,6 +21,7 @@ build/
 # FieldTrace evidence and generated output
 /input/*
 !/input/.gitkeep
+/example_problem/
 /cases/
 /reports/
 /derived/
