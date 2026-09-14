@@ -18,6 +18,19 @@ build/
 *.pem
 *.key
 
+# Local agent instructions, prompts, and work notes
+/.agent*
+/AGENTS.md
+/CLAUDE.md
+/PROMPORT.md
+/PROMPT.md
+/PROMPTS.md
+/요구사항.md
+/개발일지*.md
+/작업일지*.md
+/WORKLOG*.md
+/docs/HANDOFF.md
+
 # FieldTrace evidence and generated output
 /input/*
 !/input/.gitkeep
