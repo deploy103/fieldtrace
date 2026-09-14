@@ -25,5 +25,7 @@ HTTP PCAPNG 예상 정답:
 EVTX 의미 분류는 `tests/test_evtx.py`의 합성 XML/fake reader로 정답을 고정한다.
 실제 바이너리 I/O는 사용자 증거를 저장소에 넣지 않기 위해 추적 fixture와 분리했다.
 `tests/test_evtx_integration.py`는 `FIELDTRACE_EVTX_ISSUE38_FIXTURE`에 upstream
-`python-evtx` 공개 `issue_38.evtx` 경로를 지정했을 때만 실행되며, 다운로드 방법과
-기대 SHA-256은 `docs/HANDOFF.md`에 기록했다.
+`python-evtx` 공개 `issue_38.evtx` 경로를 지정했을 때만 실행된다. fixture는
+<https://raw.githubusercontent.com/williballenthin/python-evtx/master/tests/data/issue_38.evtx>
+에서 받을 수 있으며, 기대 SHA-256은
+`becab64455866f8fae5583fbaa5dab901115e4397ea7abe14f37ad732d5d7eb9`이다.
