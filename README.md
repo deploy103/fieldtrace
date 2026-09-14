@@ -611,8 +611,6 @@ uv run python scripts/benchmark-large-pcap.py --size-gib 1 --rss-limit-mib 512
 
 - [현장 가이드](docs/FIELD_GUIDE.md)
 - [구조와 계약](docs/ARCHITECTURE.md)
-- [현재 구현·검증·남은 작업](docs/HANDOFF.md)
-- [제품 요구사항](요구사항.md)
 
 ## 라이선스
 
