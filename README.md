@@ -107,5 +107,5 @@ uv run ruff check .
 ```
 
 실제 TShark 통합 검증은 `tshark`가 설치된 환경에서만 성공으로 간주합니다.
-자세한 구조는 `docs/ARCHITECTURE.md`, 현장 흐름은 `docs/FIELD_GUIDE.md`,
-현재 구현과 알려진 한계는 `docs/HANDOFF.md`를 참고하세요.
+자세한 구조는 `docs/ARCHITECTURE.md`, 현장 흐름은 `docs/FIELD_GUIDE.md`를
+참고하세요.
