@@ -6,8 +6,7 @@ TShark 필터, 정규식 또는 SQL을 외우지 않아도 파일을 선택하�
 답 후보와 원본 근거 위치까지 확인하는 흐름을 제공합니다.
 
 현재 릴리스는 [v0.1.0](https://github.com/deploy103/fieldtrace/releases/tag/v0.1.0)입니다.
-저장소가 private이므로 접근 권한이 있는 GitHub 계정으로 로그인해야 릴리스와 소스를
-받을 수 있습니다.
+공개 저장소에서 소스와 릴리스를 받을 수 있습니다.
 
 > 분석 결과에서 정답이 바로 보이지 않으면
 > [오프라인 문제풀이 플레이북](index.html)을 여세요. 결과 0건, 후보 폭증, 부분 분석,
@@ -149,11 +148,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 설치 프로그램이 안내한 PATH 설정을 적용하거나 새 터미널을 연 뒤 `uv --version`으로
-확인합니다. 그다음 private 저장소의 릴리스 태그를 내려받고 잠금 파일 그대로 환경을
+확인합니다. 그다음 공개 저장소의 릴리스 태그를 내려받고 잠금 파일 그대로 환경을
 만듭니다.
 
 ```bash
-git clone --branch v0.1.0 --depth 1 git@github.com:deploy103/fieldtrace.git
+git clone --branch v0.1.0 --depth 1 https://github.com/deploy103/fieldtrace.git
 cd fieldtrace
 uv sync --frozen --all-groups
 ./run.sh doctor
@@ -164,12 +163,11 @@ uv sync --frozen --all-groups
 
 ### 3. GitHub Release wheel로 설치
 
-소스 개발 도구가 필요 없다면 릴리스의 wheel을 설치할 수 있습니다. private 저장소
-접근 권한과 [GitHub CLI](https://cli.github.com/)가 있는 경우 다음처럼 받습니다.
+소스 개발 도구가 필요 없다면 릴리스의 wheel을 설치할 수 있습니다.
+[GitHub CLI](https://cli.github.com/)로 다음처럼 받습니다.
 
 ```bash
 sudo apt install -y gh
-gh auth login
 mkdir fieldtrace-v0.1.0
 cd fieldtrace-v0.1.0
 gh release download v0.1.0 \
